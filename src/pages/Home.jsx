@@ -50,12 +50,19 @@ export default function Home() {
         setLoading(false)
       })
 
-    supabase
-      .from('app_version')
-      .select('version,download_url')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .then(({ data }) => setAppVersion(data?.[0] ?? null))
+    fetch('https://api.github.com/repos/Seisen88/SeistemAccountManager/releases/latest', {
+      headers: { 'Accept': 'application/vnd.github+json' }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) { setAppVersion(null); return }
+        const exe = data.assets?.find(a => a.name.endsWith('.exe'))
+        setAppVersion(exe ? {
+          version:      data.tag_name.replace(/^v/i, ''),
+          download_url: exe.browser_download_url
+        } : null)
+      })
+      .catch(() => setAppVersion(null))
   }, [])
 
   const handleDownload = () => {
