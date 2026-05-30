@@ -14,6 +14,18 @@ function generateKey(): string {
   return `RAM-${segment()}-${segment()}-${segment()}-${segment()}`
 }
 
+async function verifyWorkinkToken(token: string): Promise<boolean> {
+  try {
+    const resp = await fetch(
+      `https://work.ink/_api/v2/token/isValid/${token}?deleteToken=1`
+    )
+    const data = await resp.json()
+    return data.valid === true
+  } catch {
+    return false
+  }
+}
+
 Deno.serve(async (req) => {
   const cors = {
     'Access-Control-Allow-Origin':  '*',
@@ -23,11 +35,23 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS')
     return new Response('ok', { headers: cors })
 
+  const fail = (msg: string, status = 400) =>
+    new Response(JSON.stringify({ error: msg }), {
+      status, headers: { ...cors, 'Content-Type': 'application/json' }
+    })
+
   try {
-    const { provider } = await req.json()
+    const { provider, token } = await req.json()
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
 
-    // ── Rate limit ────────────────────────────────────────────────
+    // ── Verify work.ink token (anti-bypass) ───────────────────────
+    if (provider === 'workink') {
+      if (!token) return fail('Missing work.ink token. Complete the checkpoint first.')
+      const valid = await verifyWorkinkToken(token)
+      if (!valid) return fail('Invalid or already used checkpoint token. Please redo the checkpoint.')
+    }
+
+    // ── Rate limit (1 key per IP per 24h) ─────────────────────────
     const { data: rateData } = await supabase
       .from('rate_limits')
       .select('last_keygen')
@@ -52,7 +76,7 @@ Deno.serve(async (req) => {
       .eq('name', provider)
       .single()
 
-    const keyHours = integration?.key_hours ?? 6
+    const keyHours  = integration?.key_hours ?? 6
     const expiresAt = new Date(Date.now() + keyHours * 60 * 60 * 1000).toISOString()
 
     // ── Generate key ──────────────────────────────────────────────
@@ -73,11 +97,9 @@ Deno.serve(async (req) => {
       last_keygen: new Date().toISOString(),
     })
 
-    return new Response(JSON.stringify({
-      key,
-      expires_at: expiresAt,
-      key_hours:  keyHours,
-    }), { headers: { ...cors, 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ key, expires_at: expiresAt, key_hours: keyHours }), {
+      headers: { ...cors, 'Content-Type': 'application/json' }
+    })
 
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), {

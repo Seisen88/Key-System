@@ -12,6 +12,7 @@ export default function Callback() {
   const [message, setMessage] = useState('')
 
   const provider = searchParams.get('provider') ?? 'unknown'
+  const token    = searchParams.get('token') ?? ''
 
   useEffect(() => {
     generateKey()
@@ -20,10 +21,16 @@ export default function Callback() {
   const generateKey = async () => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-key', {
-        body: { provider }
+        body: { provider, token }
       })
 
       if (error) throw error
+
+      if (data.error) {
+        setMessage(data.error)
+        setState('error')
+        return
+      }
 
       if (data.cooldown) {
         setMessage(data.message ?? 'You already got a key recently. Try again later.')
