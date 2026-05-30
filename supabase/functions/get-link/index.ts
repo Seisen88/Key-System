@@ -8,6 +8,7 @@ const supabase = createClient(
 const SITE_URL          = Deno.env.get('SITE_URL')          ?? 'https://seistem.vercel.app'
 const WORKINK_API_KEY   = Deno.env.get('WORKINK_API_KEY')   ?? ''
 const LOOTLABS_API_KEY  = Deno.env.get('LOOTLABS_API_KEY')  ?? ''
+const LOCKR_API_KEY     = Deno.env.get('LOCKR_API_KEY')     ?? ''
 
 async function getTierData(hours: number): Promise<{ checkpoints: number; lootlabs_tasks: number }> {
   const { data } = await supabase
@@ -33,6 +34,36 @@ async function getWorkinkLink(persistentLink: string, destination: string): Prom
     if (!data.sr) return null
     return `${persistentLink}?sr=${data.sr}`
   } catch {
+    return null
+  }
+}
+
+// ── Lockr: create a fresh locker per step ────────────────────────────────────
+async function getLockrLink(destination: string): Promise<string | null> {
+  try {
+    const resp = await fetch('https://lockr.net/api/v1/lockers', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOCKR_API_KEY}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        title:  'Account Manager',
+        target: destination,
+      }),
+    })
+    const data = await resp.json()
+    console.log('Lockr response:', JSON.stringify(data))
+    // Try common response shapes
+    if (data.url)  return data.url
+    if (data.link) return data.link
+    if (data.id)   return `https://lockr.net/${data.id}`
+    if (data.data?.url)  return data.data.url
+    if (data.data?.link) return data.data.link
+    if (data.data?.id)   return `https://lockr.net/${data.data.id}`
+    return null
+  } catch (e) {
+    console.error('Lockr fetch error:', e)
     return null
   }
 }
@@ -147,6 +178,23 @@ Deno.serve(async (req) => {
         })
 
       return new Response(JSON.stringify({ link, step: 1, total }), {
+        headers: { ...cors, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // ── Lockr: fresh locker per step, no postback verification ───────────────
+    if (provider === 'lockr') {
+      const destination = step < total
+        ? `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=lockr`
+        : `${SITE_URL}/callback?provider=lockr&hours=${hours}`
+
+      const link = await getLockrLink(destination)
+      if (!link)
+        return new Response(JSON.stringify({ error: 'Lockr API failed' }), {
+          status: 500, headers: { ...cors, 'Content-Type': 'application/json' }
+        })
+
+      return new Response(JSON.stringify({ link, step, total }), {
         headers: { ...cors, 'Content-Type': 'application/json' }
       })
     }
