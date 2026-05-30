@@ -8,10 +8,13 @@ const supabase = createClient(
 const SITE_URL        = Deno.env.get('SITE_URL') ?? 'https://seistem.vercel.app'
 const WORKINK_API_KEY = Deno.env.get('WORKINK_API_KEY') ?? ''
 
-const CHECKPOINT_MAP: Record<number, number> = {
-  6:  1,
-  12: 2,
-  24: 4,
+async function getCheckpointCount(hours: number): Promise<number> {
+  const { data } = await supabase
+    .from('tiers')
+    .select('checkpoints')
+    .eq('hours', hours)
+    .single()
+  return data?.checkpoints ?? 1
 }
 
 // Fresh override token for a single checkpoint — never reused
@@ -44,7 +47,7 @@ Deno.serve(async (req) => {
     const provider   = body.provider
     const hours      = Number(body.key_hours) || 6
     const step       = Number(body.step)  || 1    // which checkpoint we're generating (1-indexed)
-    const total      = Number(body.total) || (CHECKPOINT_MAP[hours] ?? 1)
+    const total      = Number(body.total) || await getCheckpointCount(hours)
 
     const { data: integration, error } = await supabase
       .from('integrations')

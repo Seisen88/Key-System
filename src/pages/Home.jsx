@@ -2,42 +2,52 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import IntegrationCard from '../components/IntegrationCard'
 
-const TIERS = [
-  {
-    hours: 6,
-    label: '6 Hours',
-    checkpoints: 1,
-    description: '1 checkpoint',
-    color: 'border-accent',
-    glow: 'hover:shadow-accent/20',
-    badge: 'bg-accent/10 text-accent border-accent/30',
+const COLOR_MAP = {
+  accent: {
+    border: 'border-accent',
+    glow:   'hover:shadow-accent/20',
+    badge:  'bg-accent/10 text-accent border-accent/30',
+    text:   'text-accent',
   },
-  {
-    hours: 12,
-    label: '12 Hours',
-    checkpoints: 2,
-    description: '2 checkpoints',
-    color: 'border-purple-500',
-    glow: 'hover:shadow-purple-500/20',
-    badge: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  purple: {
+    border: 'border-purple-500',
+    glow:   'hover:shadow-purple-500/20',
+    badge:  'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    text:   'text-purple-400',
   },
-  {
-    hours: 24,
-    label: '24 Hours',
-    checkpoints: 4,
-    description: '4 checkpoints',
-    color: 'border-yellow-500',
-    glow: 'hover:shadow-yellow-500/20',
-    badge: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+  yellow: {
+    border: 'border-yellow-500',
+    glow:   'hover:shadow-yellow-500/20',
+    badge:  'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+    text:   'text-yellow-400',
   },
-]
+  red: {
+    border: 'border-red-500',
+    glow:   'hover:shadow-red-500/20',
+    badge:  'bg-red-500/10 text-red-400 border-red-500/30',
+    text:   'text-red-400',
+  },
+}
 
 export default function Home() {
-  const [step, setStep]               = useState('tier')       // 'tier' | 'integration'
+  const [step, setStep]                 = useState('tier')
   const [selectedTier, setSelectedTier] = useState(null)
+  const [tiers, setTiers]               = useState([])
   const [integrations, setIntegrations] = useState([])
-  const [loading, setLoading]           = useState(false)
+  const [loading, setLoading]           = useState(true)
   const [redirecting, setRedirecting]   = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('tiers')
+      .select('*')
+      .eq('enabled', true)
+      .order('sort_order', { ascending: true })
+      .then(({ data }) => {
+        setTiers(data ?? [])
+        setLoading(false)
+      })
+  }, [])
 
   const selectTier = async (tier) => {
     setSelectedTier(tier)
@@ -94,35 +104,42 @@ export default function Home() {
         {/* ── Step 1: Tier selection ── */}
         {step === 'tier' && (
           <div className="space-y-3">
-            {TIERS.map(tier => (
-              <button
-                key={tier.hours}
-                onClick={() => selectTier(tier)}
-                className={`w-full bg-card border ${tier.color} rounded-xl p-5 text-left
-                           hover:bg-[#1a1b24] hover:shadow-lg ${tier.glow}
-                           transition-all duration-200 group flex items-center gap-4`}
-              >
-                <div className={`w-12 h-12 rounded-lg border ${tier.color} flex items-center
-                                 justify-center shrink-0 text-xl font-bold`}>
-                  {tier.hours}h
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold text-text text-sm">{tier.label}</span>
-                    <span className={`text-xs border rounded-full px-2 py-0.5 ${tier.badge}`}>
-                      {tier.description}
-                    </span>
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-20 bg-card border border-border rounded-xl animate-pulse"/>
+              ))
+            ) : tiers.map(tier => {
+              const c = COLOR_MAP[tier.color] ?? COLOR_MAP.accent
+              return (
+                <button
+                  key={tier.hours}
+                  onClick={() => selectTier(tier)}
+                  className={`w-full bg-card border ${c.border} rounded-xl p-5 text-left
+                             hover:bg-[#1a1b24] hover:shadow-lg ${c.glow}
+                             transition-all duration-200 group flex items-center gap-4`}
+                >
+                  <div className={`w-12 h-12 rounded-lg border ${c.border} flex items-center
+                                   justify-center shrink-0 text-xl font-bold ${c.text}`}>
+                    {tier.hours}h
                   </div>
-                  <p className="text-dim text-xs">
-                    Complete {tier.checkpoints} checkpoint{tier.checkpoints !== 1 ? 's' : ''} to unlock
-                  </p>
-                </div>
-                <svg className="w-4 h-4 text-dim group-hover:text-text transition-colors shrink-0"
-                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
-                </svg>
-              </button>
-            ))}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-text text-sm">{tier.label}</span>
+                      <span className={`text-xs border rounded-full px-2 py-0.5 ${c.badge}`}>
+                        {tier.checkpoints} checkpoint{tier.checkpoints !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <p className="text-dim text-xs">
+                      Complete {tier.checkpoints} checkpoint{tier.checkpoints !== 1 ? 's' : ''} to unlock
+                    </p>
+                  </div>
+                  <svg className="w-4 h-4 text-dim group-hover:text-text transition-colors shrink-0"
+                       fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </button>
+              )
+            })}
           </div>
         )}
 
