@@ -18,10 +18,19 @@ export default function Home() {
       })
   }, [])
 
-  const handleSelect = (integration) => {
-    // Redirect user to the integration's locker URL
-    // The locker's success URL should point back to: https://your-site.com/callback?provider=SLUG
-    window.location.href = integration.redirect_url
+  const [redirecting, setRedirecting] = useState(false)
+
+  const handleSelect = async (integration) => {
+    setRedirecting(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('get-link', {
+        body: { provider: integration.name }
+      })
+      if (error || !data?.link) throw new Error('Could not get link')
+      window.location.href = data.link
+    } catch {
+      setRedirecting(false)
+    }
   }
 
   return (
@@ -41,6 +50,12 @@ export default function Home() {
             Complete the checkpoint to receive your license key.
           </p>
         </div>
+
+        {redirecting && (
+          <div className="text-center text-muted text-sm mb-4 animate-pulse">
+            Opening checkpoint...
+          </div>
+        )}
 
         {/* Integration list */}
         <div className="space-y-3">
