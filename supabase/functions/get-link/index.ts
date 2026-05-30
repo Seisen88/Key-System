@@ -8,14 +8,14 @@ const supabase = createClient(
 const SITE_URL        = Deno.env.get('SITE_URL') ?? 'https://seistem.vercel.app'
 const WORKINK_API_KEY = Deno.env.get('WORKINK_API_KEY') ?? ''
 
-// How many checkpoints per key duration
 const CHECKPOINT_MAP: Record<number, number> = {
   6:  1,
   12: 2,
   24: 4,
 }
 
-async function getOverrideSr(destination: string): Promise<string | null> {
+// Fresh override token for a single checkpoint — never reused
+async function getFreshOverrideLink(persistentLink: string, destination: string): Promise<string | null> {
   try {
     const encoded = encodeURIComponent(destination)
     const resp = await fetch(
@@ -23,30 +23,11 @@ async function getOverrideSr(destination: string): Promise<string | null> {
       { headers: WORKINK_API_KEY ? { Authorization: `Bearer ${WORKINK_API_KEY}` } : {} }
     )
     const data = await resp.json()
-    return data.sr ?? null
+    if (!data.sr) return null
+    return `${persistentLink}?sr=${data.sr}`
   } catch {
     return null
   }
-}
-
-// Build a chained work.ink link for N checkpoints
-// Last checkpoint → our callback, each earlier one → the next work.ink link
-async function buildChainedLink(
-  persistentLink: string,
-  finalDestination: string,
-  checkpoints: number
-): Promise<string | null> {
-  // Start from the final destination and work backwards
-  let currentDest = finalDestination
-
-  for (let i = 0; i < checkpoints; i++) {
-    const sr = await getOverrideSr(currentDest)
-    if (!sr) return null
-    currentDest = `${persistentLink}?sr=${sr}`
-  }
-
-  // currentDest is now the first link the user visits
-  return currentDest
 }
 
 Deno.serve(async (req) => {
@@ -59,8 +40,11 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: cors })
 
   try {
-    const { provider, key_hours } = await req.json()
-    const hours = Number(key_hours) || 6
+    const body       = await req.json()
+    const provider   = body.provider
+    const hours      = Number(body.key_hours) || 6
+    const step       = Number(body.step)  || 1    // which checkpoint we're generating (1-indexed)
+    const total      = Number(body.total) || CHECKPOINT_MAP[hours] ?? 1
 
     const { data: integration, error } = await supabase
       .from('integrations')
@@ -74,31 +58,43 @@ Deno.serve(async (req) => {
         status: 404, headers: { ...cors, 'Content-Type': 'application/json' }
       })
 
-    // ── work.ink: build chained checkpoint link ───────────────────
     if (provider === 'workink' && integration.persistent_link) {
-      const checkpoints  = CHECKPOINT_MAP[hours] ?? 1
-      const finalDest    = `${SITE_URL}/callback?provider=workink&hours=${hours}&token={TOKEN}`
-      const link         = await buildChainedLink(integration.persistent_link, finalDest, checkpoints)
+
+      // Destination after THIS checkpoint completes:
+      // - If more checkpoints remain → go back to our /checkpoint page
+      // - If this is the last → go to /callback with {TOKEN}
+      let destination: string
+
+      if (step < total) {
+        // After this checkpoint, show the progress page before the next one
+        destination = `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=${provider}`
+      } else {
+        // Final checkpoint — destination has {TOKEN} placeholder filled by work.ink
+        destination = `${SITE_URL}/callback?provider=${provider}&hours=${hours}&token={TOKEN}`
+      }
+
+      // Always generate a FRESH override — never reuse a previous sr
+      const link = await getFreshOverrideLink(integration.persistent_link, destination)
 
       if (!link)
-        return new Response(JSON.stringify({ error: 'Failed to build link from work.ink' }), {
+        return new Response(JSON.stringify({ error: 'work.ink override API failed' }), {
           status: 500, headers: { ...cors, 'Content-Type': 'application/json' }
         })
 
-      return new Response(JSON.stringify({ link, checkpoints }), {
+      return new Response(JSON.stringify({ link, step, total }), {
         headers: { ...cors, 'Content-Type': 'application/json' }
       })
     }
 
-    // ── Other providers ───────────────────────────────────────────
-    const link = `${integration.redirect_url}?hours=${hours}`
-    return new Response(JSON.stringify({ link }), {
+    // Other providers — direct link
+    return new Response(JSON.stringify({ link: integration.redirect_url }), {
       headers: { ...cors, 'Content-Type': 'application/json' }
     })
 
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     })
   }
 })
