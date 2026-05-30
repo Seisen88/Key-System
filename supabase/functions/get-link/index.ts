@@ -56,8 +56,9 @@ async function getLootlabsLink(
     })
     const data = await resp.json()
     console.log('LootLabs response:', JSON.stringify(data))
-    if (data.type === 'created' && data.message?.loot_url)
-      return `${data.message.loot_url}&puid=${puid}`
+    const msg = Array.isArray(data.message) ? data.message[0] : data.message
+    if (data.type === 'created' && msg?.loot_url)
+      return `${msg.loot_url}&puid=${puid}`
     return null
   } catch (e) {
     console.error('LootLabs fetch error:', e)
