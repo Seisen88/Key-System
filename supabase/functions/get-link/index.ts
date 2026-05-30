@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
 
       const { error: insertErr } = await supabase
         .from('lootlabs_tokens')
-        .insert({ puid, hours, status: 'pending' })
+        .insert({ puid, hours, status: 'pending', tasks_required: tierData.lootlabs_tasks, tasks_completed: 0 })
 
       if (insertErr)
         return new Response(JSON.stringify({ error: 'Could not create token' }), {

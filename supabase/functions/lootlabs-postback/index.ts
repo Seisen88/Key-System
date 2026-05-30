@@ -6,7 +6,6 @@ const supabase = createClient(
 )
 
 Deno.serve(async (req) => {
-  // LootLabs sends a GET request with click_id, ip, unique_id
   const url       = new URL(req.url)
   const click_id  = url.searchParams.get('click_id')
   const ip        = url.searchParams.get('ip') ?? ''
@@ -15,19 +14,29 @@ Deno.serve(async (req) => {
   if (!click_id)
     return new Response('missing click_id', { status: 400 })
 
-  const { error } = await supabase
+  // Get current token state
+  const { data: token } = await supabase
+    .from('lootlabs_tokens')
+    .select('tasks_required, tasks_completed, status')
+    .eq('puid', click_id)
+    .single()
+
+  if (!token || token.status !== 'pending')
+    return new Response('ok', { status: 200 })
+
+  const newCount = (token.tasks_completed ?? 0) + 1
+  const allDone  = newCount >= token.tasks_required
+
+  await supabase
     .from('lootlabs_tokens')
     .update({
-      status:      'verified',
+      tasks_completed: newCount,
+      status:      allDone ? 'verified' : 'pending',
       ip,
       unique_id,
-      verified_at: new Date().toISOString(),
+      ...(allDone ? { verified_at: new Date().toISOString() } : {}),
     })
     .eq('puid', click_id)
-    .eq('status', 'pending')
-
-  if (error)
-    return new Response('error', { status: 500 })
 
   return new Response('ok', { status: 200 })
 })
