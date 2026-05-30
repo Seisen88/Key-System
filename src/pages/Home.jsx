@@ -55,8 +55,7 @@ export default function Home() {
       .select('version,download_url')
       .order('updated_at', { ascending: false })
       .limit(1)
-      .single()
-      .then(({ data }) => setAppVersion(data ?? null))
+      .then(({ data }) => setAppVersion(data?.[0] ?? null))
   }, [])
 
   const handleDownload = () => {
