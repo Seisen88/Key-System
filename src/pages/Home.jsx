@@ -36,6 +36,8 @@ export default function Home() {
   const [integrations, setIntegrations] = useState([])
   const [loading, setLoading]           = useState(true)
   const [redirecting, setRedirecting]   = useState(false)
+  const [appVersion, setAppVersion]     = useState(null)
+  const [downloading, setDownloading]   = useState(false)
 
   useEffect(() => {
     supabase
@@ -47,7 +49,22 @@ export default function Home() {
         setTiers(data ?? [])
         setLoading(false)
       })
+
+    supabase
+      .from('app_version')
+      .select('version,download_url')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single()
+      .then(({ data }) => setAppVersion(data ?? null))
   }, [])
+
+  const handleDownload = () => {
+    if (!appVersion?.download_url) return
+    setDownloading(true)
+    window.location.href = appVersion.download_url
+    setTimeout(() => setDownloading(false), 3000)
+  }
 
   const selectTier = async (tier) => {
     setSelectedTier(tier)
@@ -186,7 +203,72 @@ export default function Home() {
           </>
         )}
 
-        <p className="text-center text-dim text-xs mt-8">
+        {/* ── Download section ── */}
+        <div className="mt-10 border-t border-border pt-8">
+          <p className="text-center text-muted text-xs uppercase tracking-widest mb-4 font-semibold">
+            Download the App
+          </p>
+
+          {appVersion === null ? (
+            <div className="h-20 bg-card border border-border rounded-xl animate-pulse"/>
+          ) : appVersion ? (
+            <div className="bg-card border border-border rounded-xl p-5 flex items-center gap-4">
+              {/* Icon */}
+              <div className="w-12 h-12 rounded-lg border border-accent/40 bg-accent/10
+                              flex items-center justify-center shrink-0">
+                <svg className="w-6 h-6 text-accent" fill="none" viewBox="0 0 24 24"
+                     stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-text text-sm font-semibold">Seistem Account Manager</p>
+                <p className="text-dim text-xs mt-0.5">
+                  Latest&nbsp;
+                  <span className="text-accent font-mono">v{appVersion.version}</span>
+                  &nbsp;· Windows x64
+                </p>
+              </div>
+
+              {/* Button */}
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="shrink-0 bg-accent hover:bg-accent/80 disabled:opacity-50
+                           text-bg text-xs font-bold px-4 py-2 rounded-lg
+                           transition-all duration-200 flex items-center gap-1.5"
+              >
+                {downloading ? (
+                  <>
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10"
+                              stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor"
+                            d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                    Starting…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                         stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Download
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <p className="text-center text-dim text-xs py-4">No release available yet.</p>
+          )}
+        </div>
+
+        <p className="text-center text-dim text-xs mt-6">
           Already have a key? Open the app and paste it in the key field.
         </p>
       </div>
