@@ -55,10 +55,12 @@ async function getLootlabsLink(
       }),
     })
     const data = await resp.json()
+    console.log('LootLabs response:', JSON.stringify(data))
     if (data.type === 'created' && data.message?.loot_url)
       return `${data.message.loot_url}&puid=${puid}`
     return null
-  } catch {
+  } catch (e) {
+    console.error('LootLabs fetch error:', e)
     return null
   }
 }
