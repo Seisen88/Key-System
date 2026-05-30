@@ -50,7 +50,7 @@ export default function Home() {
         setLoading(false)
       })
 
-    fetch('https://api.github.com/repos/Seisen88/SeistemAccountManager/releases/latest', {
+    fetch('https://api.github.com/repos/Seisen88/Key-System/releases/latest', {
       headers: { 'Accept': 'application/vnd.github+json' }
     })
       .then(r => r.ok ? r.json() : null)
