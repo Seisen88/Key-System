@@ -56,7 +56,12 @@ export default function Home() {
     setRedirecting(true)
     try {
       const { data, error } = await supabase.functions.invoke('get-link', {
-        body: { provider: integration.name, key_hours: selectedTier.hours }
+        body: {
+          provider:  integration.name,
+          key_hours: selectedTier.hours,
+          step:      1,
+          total:     selectedTier.checkpoints,
+        }
       })
       if (error || !data?.link) throw new Error('Could not get link')
       window.location.href = data.link
