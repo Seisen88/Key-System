@@ -36,7 +36,7 @@ export default function Home() {
   const [integrations, setIntegrations] = useState([])
   const [loading, setLoading]           = useState(true)
   const [redirecting, setRedirecting]   = useState(false)
-  const [appVersion, setAppVersion]     = useState(null)
+  const [appVersion, setAppVersion]     = useState(undefined) // undefined=loading, null=none, obj=ready
   const [downloading, setDownloading]   = useState(false)
 
   useEffect(() => {
@@ -208,7 +208,7 @@ export default function Home() {
             Download the App
           </p>
 
-          {appVersion === null ? (
+          {appVersion === undefined ? (
             <div className="h-20 bg-card border border-border rounded-xl animate-pulse"/>
           ) : appVersion ? (
             <div className="bg-card border border-border rounded-xl p-5 flex items-center gap-4">
