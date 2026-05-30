@@ -1,3 +1,11 @@
+function formatDuration(hours) {
+  if (!hours) return '6h'
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  const rem  = hours % 24
+  return rem > 0 ? `${days}d ${rem}h` : `${days}d`
+}
+
 export default function IntegrationCard({ integration, onSelect }) {
   return (
     <button
@@ -21,15 +29,14 @@ export default function IntegrationCard({ integration, onSelect }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="font-semibold text-text text-sm">{integration.display_name}</span>
-          {integration.checkpoint_count > 1 && (
-            <span className="text-xs bg-accent/10 text-accent border border-accent/20
-                             rounded-full px-2 py-0.5">
-              {integration.checkpoint_count} checkpoints
-            </span>
-          )}
+          {/* Key duration badge */}
+          <span className="text-xs bg-accent/10 text-accent border border-accent/20
+                           rounded-full px-2 py-0.5">
+            {formatDuration(integration.key_hours)} key
+          </span>
         </div>
-        <p className="text-dim text-xs truncate">
-          Complete the checkpoint to receive your key
+        <p className="text-dim text-xs">
+          {integration.checkpoint_count} checkpoint{integration.checkpoint_count !== 1 ? 's' : ''} · Complete to get your key
         </p>
       </div>
 

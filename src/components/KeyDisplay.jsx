@@ -10,8 +10,11 @@ export default function KeyDisplay({ keyValue, expiresAt }) {
   }
 
   const expiry = expiresAt
-    ? new Date(expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '30 days'
+    ? new Date(expiresAt).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+      })
+    : 'unknown'
 
   return (
     <div className="w-full">
