@@ -53,6 +53,31 @@ Deno.serve(async (req) => {
       if (!valid) return fail('Invalid or already used checkpoint token. Please redo the checkpoint.')
     }
 
+    // ── Verify LootLabs puid (postback anti-bypass) ────────────────
+    if (provider === 'lootlabs') {
+      const puid = body.puid
+      if (!puid) return fail('Missing LootLabs token. Complete the checkpoint first.')
+
+      const { data: tokenRow } = await supabase
+        .from('lootlabs_tokens')
+        .select('status')
+        .eq('puid', puid)
+        .single()
+
+      if (!tokenRow) return fail('Invalid LootLabs token.')
+      if (tokenRow.status === 'used') return fail('This LootLabs token has already been used.')
+      if (tokenRow.status === 'pending')
+        return new Response(JSON.stringify({ pending: true }), {
+          headers: { ...cors, 'Content-Type': 'application/json' }
+        })
+
+      // Mark as used to prevent replay
+      await supabase
+        .from('lootlabs_tokens')
+        .update({ status: 'used' })
+        .eq('puid', puid)
+    }
+
     // ── Rate limit (1 key per IP per 24h) ─────────────────────────
     const { data: rateData } = await supabase
       .from('rate_limits')
