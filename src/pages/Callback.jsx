@@ -11,8 +11,9 @@ export default function Callback() {
   const [expiresAt, setExpiresAt] = useState(null)
   const [message, setMessage] = useState('')
 
-  const provider = searchParams.get('provider') ?? 'unknown'
-  const token    = searchParams.get('token') ?? ''
+  const provider  = searchParams.get('provider') ?? 'unknown'
+  const token     = searchParams.get('token') ?? ''
+  const key_hours = parseInt(searchParams.get('hours') ?? '6')
 
   useEffect(() => {
     generateKey()
@@ -21,7 +22,7 @@ export default function Callback() {
   const generateKey = async () => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-key', {
-        body: { provider, token }
+        body: { provider, token, key_hours }
       })
 
       if (error) throw error

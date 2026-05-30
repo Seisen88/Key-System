@@ -41,7 +41,9 @@ Deno.serve(async (req) => {
     })
 
   try {
-    const { provider, token } = await req.json()
+    const body = await req.json()
+    const { provider, token } = body
+    const key_hours = body.key_hours
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
 
     // ── Verify work.ink token (anti-bypass) ───────────────────────
@@ -69,14 +71,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Look up integration for key duration ──────────────────────
-    const { data: integration } = await supabase
-      .from('integrations')
-      .select('key_hours, checkpoint_count')
-      .eq('name', provider)
-      .single()
-
-    const keyHours  = integration?.key_hours ?? 6
+    const keyHours = [6, 12, 24].includes(Number(key_hours)) ? Number(key_hours) : 6
     const expiresAt = new Date(Date.now() + keyHours * 60 * 60 * 1000).toISOString()
 
     // ── Generate key ──────────────────────────────────────────────
