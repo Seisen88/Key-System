@@ -115,20 +115,30 @@ Deno.serve(async (req) => {
       })
     }
 
-    // ── LootLabs: one locker = all tasks, verified via postback ──────────────
+    // ── LootLabs: one locker per checkpoint step, verified on final step ────────
     if (provider === 'lootlabs') {
       const puid = crypto.randomUUID()
+      const isFinal = step >= total
 
-      const { error: insertErr } = await supabase
-        .from('lootlabs_tokens')
-        .insert({ puid, hours, status: 'pending', tasks_required: tierData.lootlabs_tasks, tasks_completed: 0 })
+      // Destination after completing this locker:
+      // - non-final → checkpoint progress page (same as work.ink)
+      // - final     → callback with puid for verification
+      const destination = isFinal
+        ? `${SITE_URL}/callback?provider=lootlabs&hours=${hours}&puid=${puid}`
+        : `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=lootlabs`
 
-      if (insertErr)
-        return new Response(JSON.stringify({ error: 'Could not create token' }), {
-          status: 500, headers: { ...cors, 'Content-Type': 'application/json' }
-        })
+      // Only store puid in DB for the final step — that's the one generate-key verifies
+      if (isFinal) {
+        const { error: insertErr } = await supabase
+          .from('lootlabs_tokens')
+          .insert({ puid, hours, status: 'pending', tasks_required: tierData.lootlabs_tasks, tasks_completed: 0 })
 
-      const destination = `${SITE_URL}/callback?provider=lootlabs&hours=${hours}&puid=${puid}`
+        if (insertErr)
+          return new Response(JSON.stringify({ error: 'Could not create token' }), {
+            status: 500, headers: { ...cors, 'Content-Type': 'application/json' }
+          })
+      }
+
       const link = await getLootlabsLink(destination, tierData.lootlabs_tasks, puid)
 
       if (!link)
