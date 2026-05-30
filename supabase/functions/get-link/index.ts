@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     const provider   = body.provider
     const hours      = Number(body.key_hours) || 6
     const step       = Number(body.step)  || 1    // which checkpoint we're generating (1-indexed)
-    const total      = Number(body.total) || CHECKPOINT_MAP[hours] ?? 1
+    const total      = Number(body.total) || (CHECKPOINT_MAP[hours] ?? 1)
 
     const { data: integration, error } = await supabase
       .from('integrations')
