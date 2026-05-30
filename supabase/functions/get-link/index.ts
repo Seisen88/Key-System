@@ -9,13 +9,16 @@ const SITE_URL          = Deno.env.get('SITE_URL')          ?? 'https://seistem.
 const WORKINK_API_KEY   = Deno.env.get('WORKINK_API_KEY')   ?? ''
 const LOOTLABS_API_KEY  = Deno.env.get('LOOTLABS_API_KEY')  ?? ''
 
-async function getCheckpointCount(hours: number): Promise<number> {
+async function getTierData(hours: number): Promise<{ checkpoints: number; lootlabs_tasks: number }> {
   const { data } = await supabase
     .from('tiers')
-    .select('checkpoints')
+    .select('checkpoints, lootlabs_tasks')
     .eq('hours', hours)
     .single()
-  return data?.checkpoints ?? 1
+  return {
+    checkpoints:    data?.checkpoints    ?? 1,
+    lootlabs_tasks: data?.lootlabs_tasks ?? 1,
+  }
 }
 
 // ── work.ink: fresh override per step ─────────────────────────────────────────
@@ -80,7 +83,8 @@ Deno.serve(async (req) => {
     const provider = body.provider
     const hours    = Number(body.key_hours) || 6
     const step     = Number(body.step)  || 1
-    const total    = Number(body.total) || await getCheckpointCount(hours)
+    const tierData = await getTierData(hours)
+    const total    = Number(body.total) || tierData.checkpoints
 
     const { data: integration, error } = await supabase
       .from('integrations')
@@ -113,10 +117,8 @@ Deno.serve(async (req) => {
 
     // ── LootLabs: one locker = all tasks, verified via postback ──────────────
     if (provider === 'lootlabs') {
-      // Generate a unique puid for this session
       const puid = crypto.randomUUID()
 
-      // Store as pending before creating the locker
       const { error: insertErr } = await supabase
         .from('lootlabs_tokens')
         .insert({ puid, hours, status: 'pending' })
@@ -127,7 +129,7 @@ Deno.serve(async (req) => {
         })
 
       const destination = `${SITE_URL}/callback?provider=lootlabs&hours=${hours}&puid=${puid}`
-      const link = await getLootlabsLink(destination, total, puid)
+      const link = await getLootlabsLink(destination, tierData.lootlabs_tasks, puid)
 
       if (!link)
         return new Response(JSON.stringify({ error: 'LootLabs API failed' }), {
