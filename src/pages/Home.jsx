@@ -38,6 +38,8 @@ export default function Home() {
   const [redirecting, setRedirecting]   = useState(false)
   const [appVersion, setAppVersion]     = useState(undefined) // undefined=loading, null=none, obj=ready
   const [downloading, setDownloading]   = useState(false)
+  const [activeKey, setActiveKey]       = useState(null)     // { key, expires_at } if valid
+  const [keyCopied, setKeyCopied]       = useState(false)
 
   useEffect(() => {
     supabase
@@ -49,6 +51,18 @@ export default function Home() {
         setTiers(data ?? [])
         setLoading(false)
       })
+
+    // Check localStorage for a saved active key
+    try {
+      const saved = JSON.parse(localStorage.getItem('seistem_key') || 'null')
+      if (saved?.key && saved?.expires_at) {
+        if (new Date(saved.expires_at) > new Date()) {
+          setActiveKey(saved)
+        } else {
+          localStorage.removeItem('seistem_key')
+        }
+      }
+    } catch { localStorage.removeItem('seistem_key') }
 
     fetch('https://api.github.com/repos/Seisen88/Key-System/releases/latest', {
       headers: { 'Accept': 'application/vnd.github+json' }
@@ -106,6 +120,53 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
+
+        {/* Active key banner */}
+        {activeKey && (
+          <div className="mb-6 bg-card border border-accent/40 rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-2 h-2 rounded-full bg-accent animate-pulse inline-block"/>
+              <span className="text-xs font-bold text-accent uppercase tracking-widest">Active Key</span>
+            </div>
+            <div
+              onClick={() => {
+                navigator.clipboard.writeText(activeKey.key)
+                setKeyCopied(true)
+                setTimeout(() => setKeyCopied(false), 2000)
+              }}
+              className="w-full bg-bg border border-accent/30 rounded-xl px-4 py-3 text-center
+                         font-mono text-accent tracking-widest text-sm cursor-pointer
+                         hover:border-accent transition-colors mb-3 select-all"
+            >
+              {activeKey.key}
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-dim text-xs">
+                Expires: <span className="text-muted">{new Date(activeKey.expires_at).toLocaleString()}</span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeKey.key)
+                    setKeyCopied(true)
+                    setTimeout(() => setKeyCopied(false), 2000)
+                  }}
+                  className="text-xs px-3 py-1.5 bg-accent text-bg rounded-lg font-semibold
+                             hover:brightness-110 transition"
+                >
+                  {keyCopied ? '✓ Copied' : 'Copy'}
+                </button>
+                <button
+                  onClick={() => { localStorage.removeItem('seistem_key'); setActiveKey(null) }}
+                  className="text-xs px-3 py-1.5 bg-card border border-border text-dim
+                             rounded-lg hover:text-muted transition"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div className="text-center mb-10">

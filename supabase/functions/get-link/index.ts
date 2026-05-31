@@ -57,10 +57,10 @@ async function getLockrLink(destination: string): Promise<string | null> {
     // Try common response shapes
     if (data.url)  return data.url
     if (data.link) return data.link
-    if (data.id)   return `https://lockr.net/${data.id}`
+    if (data.id)   return `https://lockr.so/${data.id}`
     if (data.data?.url)  return data.data.url
     if (data.data?.link) return data.data.link
-    if (data.data?.id)   return `https://lockr.net/${data.data.id}`
+    if (data.data?.id)   return `https://lockr.so/${data.data.id}`
     return null
   } catch (e) {
     console.error('Lockr fetch error:', e)

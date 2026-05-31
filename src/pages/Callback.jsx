@@ -61,6 +61,10 @@ export default function Callback() {
 
       setKeyValue(data.key)
       setExpiresAt(data.expires_at)
+      // Save to localStorage so Home page can show it as active
+      localStorage.setItem('seistem_key', JSON.stringify({
+        key: data.key, expires_at: data.expires_at
+      }))
       setState('success')
     } catch (err) {
       console.error(err)
