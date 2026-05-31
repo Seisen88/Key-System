@@ -79,6 +79,31 @@ Deno.serve(async (req) => {
     }
 
     const keyHours   = [6, 12, 24].includes(Number(key_hours)) ? Number(key_hours) : 6
+
+    // ── Extend existing key: add time, skip rate limit ────────────
+    if (body.existing_key) {
+      const { data: existing } = await supabase
+        .from('keys')
+        .select('*')
+        .eq('key_value', body.existing_key)
+        .single()
+
+      if (!existing) return fail('Key not found.')
+
+      // Add hours to current expiry (or from now if already expired)
+      const base      = new Date(existing.expires_at) > new Date()
+                          ? new Date(existing.expires_at)
+                          : new Date()
+      const newExpiry = new Date(base.getTime() + keyHours * 60 * 60 * 1000).toISOString()
+
+      await supabase.from('keys').update({ expires_at: newExpiry }).eq('key_value', body.existing_key)
+      await supabase.from('rate_limits').upsert({ ip_address: ip, last_keygen: new Date().toISOString() })
+
+      return new Response(JSON.stringify({ key: body.existing_key, expires_at: newExpiry, key_hours: keyHours }), {
+        headers: { ...cors, 'Content-Type': 'application/json' }
+      })
+    }
+
     const cooldownMs = keyHours * 60 * 60 * 1000   // cooldown = key duration, not hardcoded 24h
 
     // ── Rate limit: 1 key per IP per key_hours ────────────────────

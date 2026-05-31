@@ -8,10 +8,11 @@ export default function Checkpoint() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
-  const step     = parseInt(searchParams.get('step')     ?? '1')
-  const total    = parseInt(searchParams.get('total')    ?? '1')
-  const hours    = parseInt(searchParams.get('hours')    ?? '6')
-  const provider = searchParams.get('provider') ?? 'workink'
+  const step      = parseInt(searchParams.get('step')     ?? '1')
+  const total     = parseInt(searchParams.get('total')    ?? '1')
+  const hours     = parseInt(searchParams.get('hours')    ?? '6')
+  const provider  = searchParams.get('provider') ?? 'workink'
+  const extendKey = searchParams.get('extend_key') ?? ''
 
   const nextStep    = step + 1
   const isLastStep  = nextStep >= total
@@ -24,9 +25,10 @@ export default function Checkpoint() {
       const { data, error: fnErr } = await supabase.functions.invoke('get-link', {
         body: {
           provider,
-          key_hours: hours,
-          step:      nextStep,   // next checkpoint number
+          key_hours:  hours,
+          step:       nextStep,
           total,
+          ...(extendKey ? { extend_key: extendKey } : {})
         }
       })
 

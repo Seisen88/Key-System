@@ -110,12 +110,13 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: cors })
 
   try {
-    const body     = await req.json()
-    const provider = body.provider
-    const hours    = Number(body.key_hours) || 6
-    const step     = Number(body.step)  || 1
-    const tierData = await getTierData(hours)
-    const total    = Number(body.total) || tierData.checkpoints
+    const body       = await req.json()
+    const provider   = body.provider
+    const hours      = Number(body.key_hours) || 6
+    const step       = Number(body.step)  || 1
+    const tierData   = await getTierData(hours)
+    const total      = Number(body.total) || tierData.checkpoints
+    const extendKey  = body.extend_key ? `&extend_key=${encodeURIComponent(body.extend_key)}` : ''
 
     const { data: integration, error } = await supabase
       .from('integrations')
@@ -132,8 +133,8 @@ Deno.serve(async (req) => {
     // ── work.ink ─────────────────────────────────────────────────────────────
     if (provider === 'workink' && integration.persistent_link) {
       const destination = step < total
-        ? `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=${provider}`
-        : `${SITE_URL}/callback?provider=${provider}&hours=${hours}&token={TOKEN}`
+        ? `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=${provider}${extendKey}`
+        : `${SITE_URL}/callback?provider=${provider}&hours=${hours}&token={TOKEN}${extendKey}`
 
       const link = await getWorkinkLink(integration.persistent_link, destination)
       if (!link)
@@ -155,8 +156,8 @@ Deno.serve(async (req) => {
       // - non-final → checkpoint progress page (same as work.ink)
       // - final     → callback with puid for verification
       const destination = isFinal
-        ? `${SITE_URL}/callback?provider=lootlabs&hours=${hours}&puid=${puid}`
-        : `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=lootlabs`
+        ? `${SITE_URL}/callback?provider=lootlabs&hours=${hours}&puid=${puid}${extendKey}`
+        : `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=lootlabs${extendKey}`
 
       // Only store puid in DB for the final step — that's the one generate-key verifies
       if (isFinal) {
@@ -185,8 +186,8 @@ Deno.serve(async (req) => {
     // ── Lockr: fresh locker per step, no postback verification ───────────────
     if (provider === 'lockr') {
       const destination = step < total
-        ? `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=lockr`
-        : `${SITE_URL}/callback?provider=lockr&hours=${hours}`
+        ? `${SITE_URL}/checkpoint?step=${step}&total=${total}&hours=${hours}&provider=lockr${extendKey}`
+        : `${SITE_URL}/callback?provider=lockr&hours=${hours}${extendKey}`
 
       const link = await getLockrLink(destination)
       if (!link)

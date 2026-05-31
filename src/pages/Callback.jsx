@@ -15,10 +15,11 @@ export default function Callback() {
   const [message, setMessage]   = useState('')
   const pollCount               = useRef(0)
 
-  const provider  = searchParams.get('provider') ?? 'unknown'
-  const token     = searchParams.get('token') ?? ''
-  const puid      = searchParams.get('puid') ?? ''
-  const key_hours = parseInt(searchParams.get('hours') ?? '6')
+  const provider   = searchParams.get('provider') ?? 'unknown'
+  const token      = searchParams.get('token') ?? ''
+  const puid       = searchParams.get('puid') ?? ''
+  const key_hours  = parseInt(searchParams.get('hours') ?? '6')
+  const extend_key = searchParams.get('extend_key') ?? ''
 
   useEffect(() => {
     attemptGenerate()
@@ -27,7 +28,7 @@ export default function Callback() {
   const attemptGenerate = async () => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-key', {
-        body: { provider, token, puid, key_hours }
+        body: { provider, token, puid, key_hours, ...(extend_key ? { existing_key: extend_key } : {}) }
       })
 
       if (error) throw error

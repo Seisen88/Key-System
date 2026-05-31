@@ -40,6 +40,7 @@ export default function Home() {
   const [downloading, setDownloading]   = useState(false)
   const [activeKey, setActiveKey]       = useState(null)     // { key, expires_at } if valid
   const [keyCopied, setKeyCopied]       = useState(false)
+  const [extending, setExtending]       = useState(false)    // true = extending existing key
 
   useEffect(() => {
     supabase
@@ -108,6 +109,7 @@ export default function Home() {
           key_hours: selectedTier.hours,
           step:      1,
           total:     selectedTier.checkpoints,
+          ...(extending && activeKey ? { extend_key: activeKey.key } : {})
         }
       })
       if (error || !data?.link) throw new Error('Could not get link')
@@ -157,7 +159,14 @@ export default function Home() {
                   {keyCopied ? '✓ Copied' : 'Copy'}
                 </button>
                 <button
-                  onClick={() => { localStorage.removeItem('seistem_key'); setActiveKey(null) }}
+                  onClick={() => { setExtending(true); setStep('tier') }}
+                  className="text-xs px-3 py-1.5 bg-card border border-accent/40 text-accent
+                             rounded-lg hover:bg-accent/10 transition font-semibold"
+                >
+                  + Extend
+                </button>
+                <button
+                  onClick={() => { localStorage.removeItem('seistem_key'); setActiveKey(null); setExtending(false) }}
                   className="text-xs px-3 py-1.5 bg-card border border-border text-dim
                              rounded-lg hover:text-muted transition"
                 >
@@ -176,12 +185,16 @@ export default function Home() {
             Account Manager
           </div>
           <h1 className="text-3xl font-bold text-text mb-3">
-            {step === 'tier' ? 'Get Your Key' : `${selectedTier?.label} Key`}
+            {extending
+              ? (step === 'tier' ? 'Extend Your Key' : `Add ${selectedTier?.label}`)
+              : (step === 'tier' ? 'Get Your Key'    : `${selectedTier?.label} Key`)}
           </h1>
           <p className="text-muted text-sm leading-relaxed">
-            {step === 'tier'
-              ? 'Choose how long you want your key to last.'
-              : 'Choose a checkpoint provider to complete.'}
+            {extending && step === 'tier'
+              ? 'Choose how much time to add to your key.'
+              : step === 'tier'
+                ? 'Choose how long you want your key to last.'
+                : 'Choose a checkpoint provider to complete.'}
           </p>
         </div>
 
@@ -231,7 +244,7 @@ export default function Home() {
         {step === 'integration' && (
           <>
             <button
-              onClick={() => { setStep('tier'); setRedirecting(false) }}
+              onClick={() => { setStep('tier'); setRedirecting(false); setExtending(false) }}
               className="flex items-center gap-1 text-dim text-xs hover:text-muted
                          transition mb-5"
             >
