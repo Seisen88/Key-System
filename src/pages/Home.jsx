@@ -42,11 +42,21 @@ export default function Home() {
   const [keyCopied, setKeyCopied]       = useState(false)
   const [extending, setExtending]       = useState(false)    // true = extending existing key
   const [visitCount, setVisitCount]     = useState(null)
+  const [downloadCount, setDownloadCount] = useState(null)
 
   useEffect(() => {
     supabase.rpc('increment_visits').then(({ data }) => {
       if (data != null) setVisitCount(data)
     })
+
+    supabase
+      .from('site_stats')
+      .select('downloads')
+      .eq('id', 1)
+      .single()
+      .then(({ data }) => {
+        if (data != null) setDownloadCount(data.downloads)
+      })
 
     supabase
       .from('tiers')
@@ -88,6 +98,9 @@ export default function Home() {
   const handleDownload = () => {
     if (!appVersion?.download_url) return
     setDownloading(true)
+    supabase.rpc('increment_downloads').then(({ data }) => {
+      if (data != null) setDownloadCount(data)
+    })
     window.location.href = appVersion.download_url
     setTimeout(() => setDownloading(false), 3000)
   }
@@ -184,26 +197,10 @@ export default function Home() {
 
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="inline-flex items-center gap-2 bg-card border border-border
-                            rounded-full px-4 py-1.5 text-xs text-muted">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"/>
-              Account Manager
-            </div>
-            {visitCount != null && (
-              <div className="inline-flex items-center gap-1.5 bg-card border border-border
-                              rounded-full px-3 py-1.5 text-xs text-dim">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24"
-                     stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round"
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                  <path strokeLinecap="round" strokeLinejoin="round"
-                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7
-                           -1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                </svg>
-                {visitCount.toLocaleString()} visits
-              </div>
-            )}
+          <div className="inline-flex items-center gap-2 bg-card border border-border
+                          rounded-full px-4 py-1.5 text-xs text-muted mb-6">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"/>
+            Account Manager
           </div>
           <h1 className="text-3xl font-bold text-text mb-3">
             {extending
@@ -369,7 +366,39 @@ export default function Home() {
           )}
         </div>
 
-        <p className="text-center text-dim text-xs mt-6">
+        {/* ── Stats ── */}
+        {(visitCount != null || downloadCount != null) && (
+          <div className="flex items-center justify-center gap-4 mt-5">
+            {visitCount != null && (
+              <div className="inline-flex items-center gap-1.5 text-xs text-dim">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                     stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7
+                           -1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                {visitCount.toLocaleString()} visits
+              </div>
+            )}
+            {visitCount != null && downloadCount != null && (
+              <span className="text-border text-xs">·</span>
+            )}
+            {downloadCount != null && (
+              <div className="inline-flex items-center gap-1.5 text-xs text-dim">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                     stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                {downloadCount.toLocaleString()} downloads
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="text-center text-dim text-xs mt-4">
           Already have a key? Open the app and paste it in the key field.
         </p>
       </div>
