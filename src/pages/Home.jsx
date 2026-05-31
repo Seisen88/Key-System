@@ -41,8 +41,13 @@ export default function Home() {
   const [activeKey, setActiveKey]       = useState(null)     // { key, expires_at } if valid
   const [keyCopied, setKeyCopied]       = useState(false)
   const [extending, setExtending]       = useState(false)    // true = extending existing key
+  const [visitCount, setVisitCount]     = useState(null)
 
   useEffect(() => {
+    supabase.rpc('increment_visits').then(({ data }) => {
+      if (data != null) setVisitCount(data)
+    })
+
     supabase
       .from('tiers')
       .select('*')
@@ -179,10 +184,26 @@ export default function Home() {
 
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 bg-card border border-border
-                          rounded-full px-4 py-1.5 text-xs text-muted mb-6">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"/>
-            Account Manager
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="inline-flex items-center gap-2 bg-card border border-border
+                            rounded-full px-4 py-1.5 text-xs text-muted">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"/>
+              Account Manager
+            </div>
+            {visitCount != null && (
+              <div className="inline-flex items-center gap-1.5 bg-card border border-border
+                              rounded-full px-3 py-1.5 text-xs text-dim">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24"
+                     stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7
+                           -1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                {visitCount.toLocaleString()} visits
+              </div>
+            )}
           </div>
           <h1 className="text-3xl font-bold text-text mb-3">
             {extending
