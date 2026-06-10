@@ -316,18 +316,8 @@ function StatCard({ label, value, icon, accent, color, pct }) {
 }
 
 // ── Dashboard view ────────────────────────────────────────────────────────────
-function Dashboard({ keys }) {
-  const now    = new Date()
-  const today  = new Date(now); today.setHours(0,0,0,0)
-  const month  = new Date(now); month.setDate(1); month.setHours(0,0,0,0)
-
-  const active   = keys.filter(isActive).length
-  const expired  = keys.filter(isExpired).length
-  const disabled = keys.filter(isDisabled).length
-  const premium  = keys.filter(k=>k.is_premium).length
-  const todayN   = keys.filter(k=>new Date(k.created_at)>=today).length
-  const monthN   = keys.filter(k=>new Date(k.created_at)>=month).length
-  const total    = keys.length
+function Dashboard({ counts }) {
+  const { total, active, expired, disabled, premium, today: todayN, month: monthN, recent, providers } = counts
 
   const stats = [
     { label:'Total Keys',    value:total,    color:'text-white',       accent:'bg-white/5',         icon:<Key  size={17} className="text-white/30"/> },
@@ -338,9 +328,7 @@ function Dashboard({ keys }) {
     { label:'This Month',    value:monthN,   color:'text-sky-400',     accent:'bg-sky-500/8',       icon:<Dash   size={17} className="text-sky-500"/> },
   ]
 
-  const providers   = keys.reduce((acc,k) => { acc[k.provider]=(acc[k.provider]||0)+1; return acc },{})
-  const providerList= Object.entries(providers).sort((a,b)=>b[1]-a[1])
-  const recent      = [...keys].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,6)
+  const providerList = Object.entries(providers).sort((a,b)=>b[1]-a[1])
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -419,8 +407,7 @@ function Dashboard({ keys }) {
 }
 
 // ── Keys view ─────────────────────────────────────────────────────────────────
-function Keys({ keys, setKeys, supabase, onRefresh }) {
-  const [search,       setSearch]       = useState('')
+function Keys({ keys, setKeys, supabase, onRefresh, total, page, onPageChange, search, onSearch, counts, PAGE_SIZE }) {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterTier,   setFilterTier]   = useState('all')
   const [layout,       setLayout]       = useState('list')
@@ -435,18 +422,14 @@ function Keys({ keys, setKeys, supabase, onRefresh }) {
     key_value: randomKey(), hours: 24, is_premium: false, key_name: '', discord_user_id: '', discord_username: ''
   })
 
+  // Search is server-side; status/tier filter applied client-side within the current page
   const filtered = keys.filter(k => {
     if (filterTier === 'standard' && k.is_premium)  return false
     if (filterTier === 'premium'  && !k.is_premium) return false
     if (filterStatus === 'active'   && !isActive(k))   return false
     if (filterStatus === 'expired'  && !isExpired(k))  return false
     if (filterStatus === 'disabled' && !isDisabled(k)) return false
-    const q = search.toLowerCase()
-    return !q || k.key_value?.toLowerCase().includes(q)
-              || k.discord_username?.toLowerCase().includes(q)
-              || k.discord_user_id?.toLowerCase().includes(q)
-              || k.provider?.toLowerCase().includes(q)
-              || k.hwid?.toLowerCase().includes(q)
+    return true
   })
 
   const copyKey = (val, id) => {
@@ -523,11 +506,12 @@ function Keys({ keys, setKeys, supabase, onRefresh }) {
 
   const tierTabs   = [{id:'all',label:'All'},{id:'standard',label:'Standard'},{id:'premium',label:'Premium'}]
   const statusTabs = [
-    {id:'all',     label:'All',     count:keys.length},
-    {id:'active',  label:'Active',  count:keys.filter(isActive).length},
-    {id:'expired', label:'Expired', count:keys.filter(isExpired).length},
-    {id:'disabled',label:'Disabled',count:keys.filter(isDisabled).length},
+    {id:'all',     label:'All',     count: counts.total},
+    {id:'active',  label:'Active',  count: counts.active},
+    {id:'expired', label:'Expired', count: counts.expired},
+    {id:'disabled',label:'Disabled',count: counts.disabled},
   ]
+  const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -537,7 +521,7 @@ function Keys({ keys, setKeys, supabase, onRefresh }) {
         <div className="flex flex-wrap items-start sm:items-center justify-between gap-3 px-4 sm:px-7 pt-5 pb-3">
           <div>
             <h1 className="text-lg font-semibold text-white">Keys</h1>
-            <p className="text-white/35 text-sm mt-0.5">{keys.length} Keys</p>
+            <p className="text-white/35 text-sm mt-0.5">{total.toLocaleString()} Keys</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={onRefresh}
@@ -565,8 +549,8 @@ function Keys({ keys, setKeys, supabase, onRefresh }) {
             <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/25" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
-            <input value={search} onChange={e=>setSearch(e.target.value)}
-              placeholder="Search Key, HWID, Provider, Discord…"
+            <input value={search} onChange={e=>onSearch(e.target.value)}
+              placeholder="Search key, provider, Discord…"
               className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-9 pr-12 py-2.5 text-sm text-white
                          outline-none focus:border-purple-500/40 transition placeholder-white/20"/>
             <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-white/20 border border-white/[0.08] rounded px-1.5 py-0.5 font-mono hidden sm:block">
@@ -741,6 +725,36 @@ function Keys({ keys, setKeys, supabase, onRefresh }) {
         })}
       </div>
 
+      {/* ── Pagination ─────────────────────────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 sm:px-7 py-3 border-t border-white/[0.05] flex-shrink-0">
+          <span className="text-white/30 text-xs tabular-nums">
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+          </span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => onPageChange(0)} disabled={page === 0}
+              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
+              «
+            </button>
+            <button onClick={() => onPageChange(page - 1)} disabled={page === 0}
+              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
+              ‹
+            </button>
+            <span className="px-3 py-1.5 text-white/50 text-xs tabular-nums">
+              {page + 1} / {totalPages}
+            </span>
+            <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages - 1}
+              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
+              ›
+            </button>
+            <button onClick={() => onPageChange(totalPages - 1)} disabled={page >= totalPages - 1}
+              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
+              »
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {editModal && (
         <Modal title="Edit Key" sub={editModal.key_value} onClose={()=>setEditModal(null)}>
@@ -848,30 +862,86 @@ function Keys({ keys, setKeys, supabase, onRefresh }) {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
+const PAGE_SIZE    = 100
+const EMPTY_COUNTS = { total:0, active:0, expired:0, disabled:0, premium:0, today:0, month:0, recent:[], providers:{} }
+
 export default function Admin() {
-  const [serviceKey, setServiceKey] = useState('')
-  const [authed,     setAuthed]     = useState(false)
-  const [view,       setView]       = useState('dashboard')
-  const [keys,       setKeys]       = useState([])
-  const [loading,    setLoading]    = useState(false)
-  const [sidebarOpen,setSidebarOpen]= useState(false)
+  const [serviceKey,  setServiceKey]  = useState('')
+  const [authed,      setAuthed]      = useState(false)
+  const [view,        setView]        = useState('dashboard')
+  const [keys,        setKeys]        = useState([])
+  const [keyTotal,    setKeyTotal]    = useState(0)
+  const [keyPage,     setKeyPage]     = useState(0)
+  const [keySearch,   setKeySearch]   = useState('')
+  const [counts,      setCounts]      = useState(EMPTY_COUNTS)
+  const [loading,     setLoading]     = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const supabase = authed ? adminClient(serviceKey) : null
 
-  const fetchKeys = useCallback(async () => {
+  // Fetch server-side counts for the Dashboard — no full row data transferred
+  const fetchCounts = useCallback(async () => {
+    if (!supabase) return
+    const now        = new Date().toISOString()
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0)
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0)
+
+    const [
+      { count: total },
+      { count: active },
+      { count: expired },
+      { count: disabled },
+      { count: premium },
+      { count: today },
+      { count: month },
+      { data: recent },
+      { data: providerRows },
+    ] = await Promise.all([
+      supabase.from('keys').select('*', { count:'exact', head:true }),
+      supabase.from('keys').select('*', { count:'exact', head:true }).gt('expires_at', now).eq('is_disabled', false),
+      supabase.from('keys').select('*', { count:'exact', head:true }).lte('expires_at', now),
+      supabase.from('keys').select('*', { count:'exact', head:true }).eq('is_disabled', true),
+      supabase.from('keys').select('*', { count:'exact', head:true }).eq('is_premium', true),
+      supabase.from('keys').select('*', { count:'exact', head:true }).gte('created_at', todayStart.toISOString()),
+      supabase.from('keys').select('*', { count:'exact', head:true }).gte('created_at', monthStart.toISOString()),
+      supabase.from('keys').select('key_value,created_at,expires_at,is_disabled,is_premium').order('created_at', { ascending:false }).limit(6),
+      supabase.from('keys').select('provider').limit(5000),
+    ])
+
+    const providers = (providerRows || []).reduce((acc, k) => {
+      acc[k.provider] = (acc[k.provider] || 0) + 1; return acc
+    }, {})
+
+    setCounts({ total:total||0, active:active||0, expired:expired||0, disabled:disabled||0,
+                premium:premium||0, today:today||0, month:month||0, recent:recent||[], providers })
+  }, [serviceKey, authed])
+
+  // Paginated key fetch — 100 rows at a time, with optional server-side search
+  const fetchKeys = useCallback(async (page=0, search='') => {
     if (!supabase) return
     setLoading(true)
-    const { data } = await supabase.from('keys').select('*').order('created_at', { ascending:false })
+    const from = page * PAGE_SIZE
+    const to   = from + PAGE_SIZE - 1
+    let q = supabase.from('keys').select('*', { count:'exact' }).order('created_at', { ascending:false }).range(from, to)
+    if (search.trim()) {
+      q = q.or(`key_value.ilike.%${search.trim()}%,discord_username.ilike.%${search.trim()}%,provider.ilike.%${search.trim()}%`)
+    }
+    const { data, count } = await q
     setKeys(data || [])
+    setKeyTotal(count || 0)
     setLoading(false)
   }, [serviceKey, authed])
 
-  useEffect(() => { if (authed) fetchKeys() }, [authed])
+  useEffect(() => { if (authed) { fetchCounts(); fetchKeys(0, '') } }, [authed])
+
+  const handleSearch     = (s) => { setKeySearch(s); setKeyPage(0); fetchKeys(0, s) }
+  const handlePageChange = (p) => { setKeyPage(p); fetchKeys(p, keySearch) }
+  const handleRefresh    = ()  => { fetchCounts(); fetchKeys(keyPage, keySearch) }
 
   const handleLogin   = (k) => { setServiceKey(k); setAuthed(true) }
   const handleSignOut = () => {
     localStorage.removeItem('seistem_admin_key')
-    setAuthed(false); setServiceKey(''); setKeys([])
+    setAuthed(false); setServiceKey(''); setKeys([]); setCounts(EMPTY_COUNTS)
   }
 
   useEffect(() => {
@@ -887,7 +957,7 @@ export default function Admin() {
         view={view}
         setView={setView}
         onSignOut={handleSignOut}
-        keyCount={keys.length}
+        keyCount={counts.total}
         open={sidebarOpen}
         onClose={()=>setSidebarOpen(false)}
       />
@@ -899,8 +969,11 @@ export default function Admin() {
               <div className="w-6 h-6 border-2 border-purple-500/60 border-t-transparent rounded-full animate-spin"/>
             </div>
           ) : view==='dashboard'
-            ? <Dashboard keys={keys}/>
-            : <Keys keys={keys} setKeys={setKeys} supabase={supabase} onRefresh={fetchKeys}/>
+            ? <Dashboard counts={counts}/>
+            : <Keys keys={keys} setKeys={setKeys} supabase={supabase} onRefresh={handleRefresh}
+                    total={keyTotal} page={keyPage} onPageChange={handlePageChange}
+                    search={keySearch} onSearch={handleSearch}
+                    counts={counts} PAGE_SIZE={PAGE_SIZE}/>
           }
         </main>
       </div>

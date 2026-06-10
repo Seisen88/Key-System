@@ -33,6 +33,18 @@ Deno.serve(async (req) => {
 
     if (error || !data) return fail('Invalid key')
 
+    // ── Check if key is admin-disabled ────────────────────────────
+    if (data.is_disabled) {
+      if (data.disabled_until) {
+        if (new Date(data.disabled_until) > new Date())
+          return fail('Key is temporarily disabled')
+        // disabled_until has passed — auto-lift the disable
+        await supabase.from('keys').update({ is_disabled: false, disabled_until: null }).eq('key_value', key)
+      } else {
+        return fail('Key has been disabled')
+      }
+    }
+
     // ── Check expiry ──────────────────────────────────────────────
     if (new Date(data.expires_at) < new Date())
       return fail('Key expired')
