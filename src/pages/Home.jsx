@@ -80,15 +80,17 @@ export default function Home() {
       }
     } catch { localStorage.removeItem('seistem_key') }
 
-    supabase
-      .from('releases')
-      .select('version, download_url, release_notes')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-      .then(({ data }) => {
+    fetch('https://api.github.com/repos/Seisen88/Key-System/releases/latest', {
+      headers: { 'Accept': 'application/vnd.github+json' }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
         if (!data) { setAppVersion(null); return }
-        setAppVersion({ version: data.version, download_url: data.download_url, notes: data.release_notes })
+        const exe = data.assets?.find(a => a.name.endsWith('.exe'))
+        setAppVersion(exe ? {
+          version:      data.tag_name.replace(/^v/i, ''),
+          download_url: exe.browser_download_url
+        } : null)
       })
       .catch(() => setAppVersion(null))
   }, [])
