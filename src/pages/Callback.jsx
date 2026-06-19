@@ -18,7 +18,7 @@ export default function Callback() {
   const provider   = searchParams.get('provider') ?? 'unknown'
   const token      = searchParams.get('token') ?? ''
   const puid       = searchParams.get('puid') ?? ''
-  const key_hours  = parseInt(searchParams.get('hours') ?? '6')
+  const key_hours  = parseInt(searchParams.get('hours') ?? '24')
   const extend_key = searchParams.get('extend_key') ?? ''
 
   useEffect(() => {

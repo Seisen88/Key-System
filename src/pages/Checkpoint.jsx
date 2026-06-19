@@ -10,7 +10,7 @@ export default function Checkpoint() {
 
   const step      = parseInt(searchParams.get('step')     ?? '1')
   const total     = parseInt(searchParams.get('total')    ?? '1')
-  const hours     = parseInt(searchParams.get('hours')    ?? '6')
+  const hours     = parseInt(searchParams.get('hours')    ?? '24')
   const provider  = searchParams.get('provider') ?? 'workink'
   const extendKey = searchParams.get('extend_key') ?? ''
 

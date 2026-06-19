@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
         .eq('puid', puid)
     }
 
-    const keyHours   = [6, 12, 24].includes(Number(key_hours)) ? Number(key_hours) : 6
+    const keyHours   = [24, 48].includes(Number(key_hours)) ? Number(key_hours) : 24
 
     // ── Extend existing key: add time, skip rate limit ────────────
     if (body.existing_key) {
