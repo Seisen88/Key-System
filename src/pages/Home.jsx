@@ -323,7 +323,7 @@ export default function Home() {
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-text text-sm font-semibold">Seistem Account Manager</p>
+                <p className="text-text text-sm font-semibold">Reiya Account Manager</p>
                 <p className="text-dim text-xs mt-0.5">
                   Latest&nbsp;
                   <span className="text-accent font-mono">v{appVersion.version}</span>
