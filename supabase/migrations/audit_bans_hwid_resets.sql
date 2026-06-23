@@ -10,6 +10,9 @@
 --   $$
 -- );
 
+-- ── Self-service HWID reset cooldown column ──────────────────────────────────
+ALTER TABLE keys ADD COLUMN IF NOT EXISTS hwid_reset_at timestamptz;
+
 -- ── Audit Log ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS audit_log (
   id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -22,9 +25,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
--- Only service role can insert; authenticated admins can read
 CREATE POLICY "admin_read_audit" ON audit_log
   FOR SELECT TO authenticated USING (true);
+CREATE POLICY "admin_insert_audit" ON audit_log
+  FOR INSERT TO authenticated WITH CHECK (true);
 
 -- ── Bans ──────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS bans (

@@ -485,7 +485,7 @@ function Dashboard({ counts }) {
               <div className="py-12 text-center text-white/15 text-sm font-mono">No keys yet</div>
             ) : (
               recent.map((k, i) => (
-                <div key={k.id} className={`flex items-center gap-3 px-5 py-3.5 ${i < recent.length-1 ? 'border-b border-white/[0.04]' : ''}`}>
+                <div key={k.key_value} className={`flex items-center gap-3 px-5 py-3.5 ${i < recent.length-1 ? 'border-b border-white/[0.04]' : ''}`}>
                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(k)?'bg-emerald-400':isDisabled(k)?'bg-amber-400':'bg-red-400'}`}/>
                   <span className="font-mono text-xs text-white/50 flex-1 truncate">{k.key_value}</span>
                   {k.is_premium && <span className="text-[10px] text-amber-400 font-mono">★</span>}
@@ -1373,17 +1373,6 @@ export default function Admin() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Real-time: refresh dashboard counts on any keys table change
-  useEffect(() => {
-    if (!authed) return
-    const channel = supabase.channel('admin-keys-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'keys' }, () => {
-        fetchCounts()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [authed, fetchCounts])
-
   const fetchCounts = useCallback(async () => {
     const now        = new Date().toISOString()
     const todayStart = new Date(); todayStart.setHours(0,0,0,0)
@@ -1438,6 +1427,17 @@ export default function Admin() {
     setCounts({ total:total||0, active:active||0, expired:expired||0, disabled:disabled||0,
                 premium:premium||0, today:today||0, month:month||0, recent:recent||[], providers, daily })
   }, [authed])
+
+  // Real-time: refresh dashboard counts on any keys table change
+  useEffect(() => {
+    if (!authed) return
+    const channel = supabase.channel('admin-keys-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'keys' }, () => {
+        fetchCounts()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [authed, fetchCounts])
 
   const fetchKeys = useCallback(async (page=0, search='', dateFrom='', dateTo='') => {
     setLoading(true)
