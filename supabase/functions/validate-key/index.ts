@@ -111,7 +111,8 @@ Deno.serve(async (req) => {
     // Sign response so the desktop app can verify it wasn't tampered with
     const signedData  = `${data.expires_at}|${data.provider}`
     const secretHex   = Deno.env.get('VALIDATION_HMAC_SECRET') ?? ''
-    const secretBytes = new Uint8Array(secretHex.match(/.{2}/g)!.map((h: string) => parseInt(h, 16)))
+    // Use raw UTF-8 bytes of the hex string — matches how the Rust desktop app derives the key
+    const secretBytes = new TextEncoder().encode(secretHex)
     const hmacKey     = await crypto.subtle.importKey(
       'raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
     )
