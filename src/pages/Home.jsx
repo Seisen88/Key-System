@@ -51,7 +51,14 @@ export default function Home() {
     if (!appVersion?.download_url) return
     setDownloading(true)
     supabase.rpc('increment_downloads').then(({ data }) => { if (data != null) setDownloadCount(data) })
-    window.location.href = appVersion.download_url
+    const cc = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({
+      title: 'Download',
+      tid: 1370800,
+      cd: 1370800,
+      domain: '//dc9xwpjprguup.cloudfront.net',
+      link: appVersion.download_url,
+    })))))
+    window.location.href = `https://loot-reward.com/t?cc=${cc}`
     setTimeout(() => setDownloading(false), 3000)
   }
 
