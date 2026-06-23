@@ -5,6 +5,22 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
+// Simple in-memory rate limiter: max 5 validate attempts per IP per 60s
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT    = 5
+const RATE_WINDOW   = 60_000
+
+function isRateLimited(ip: string): boolean {
+  const now    = Date.now()
+  const record = rateLimitMap.get(ip)
+  if (!record || now > record.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW })
+    return false
+  }
+  record.count++
+  return record.count > RATE_LIMIT
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin':  '*',
@@ -14,13 +30,26 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS')
     return new Response('ok', { headers: corsHeaders })
 
-  const fail = (message: string) =>
+  const fail = (message: string, status = 200) =>
     new Response(JSON.stringify({ valid: false, message }), {
+      status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
+  // Rate limit by IP
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+                ?? req.headers.get('x-real-ip')
+                ?? 'unknown'
+  if (isRateLimited(clientIp))
+    return fail('Too many requests', 429)
+
   try {
     const { key, hwid } = await req.json()
+
+    if (!key || typeof key !== 'string' || key.length > 200)
+      return fail('Invalid request')
+    if (!hwid || typeof hwid !== 'string' || hwid.length > 500)
+      return fail('Invalid request')
 
     if (!key || !hwid) return fail('Missing key or hwid')
 

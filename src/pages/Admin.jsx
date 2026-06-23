@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-
-function adminClient(k) { return createClient(SUPABASE_URL, k) }
+import { supabase } from '../lib/supabase'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function isActive(k)   { return !k.is_disabled && new Date(k.expires_at) > new Date() }
@@ -106,20 +102,19 @@ function Toggle({ label, icon, checked, onChange }) {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
-  const [key, setKey] = useState(() => localStorage.getItem('seistem_admin_key') || '')
-  const [err, setErr] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [email,    setEmail]    = useState('')
+  const [password, setPassword] = useState('')
+  const [err,      setErr]      = useState('')
+  const [loading,  setLoading]  = useState(false)
 
   const submit = async (e) => {
     e.preventDefault()
-    const k = key.trim()
-    if (!k) return
+    if (!email.trim() || !password) return
     setLoading(true); setErr('')
-    const { error } = await adminClient(k).from('keys').select('id').limit(1)
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
     setLoading(false)
-    if (error) { setErr('Invalid key or insufficient permissions.'); return }
-    localStorage.setItem('seistem_admin_key', k)
-    onLogin(k)
+    if (error) { setErr('Invalid email or password.'); return }
+    onLogin()
   }
 
   return (
@@ -130,7 +125,7 @@ function Login({ onLogin }) {
             <Shield size={20} className="text-purple-400"/>
           </div>
           <h1 className="text-lg font-semibold text-white tracking-tight">Seistem Admin</h1>
-          <p className="text-white/35 text-sm mt-1">Sign in with your service role key</p>
+          <p className="text-white/35 text-sm mt-1">Admin access only</p>
         </div>
         <form onSubmit={submit} className="bg-[#13141A] border border-white/[0.08] rounded-2xl p-6 space-y-4">
           {err && (
@@ -138,10 +133,11 @@ function Login({ onLogin }) {
               {err}
             </div>
           )}
-          <Input label="Service Role Key" type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="eyJ…"/>
+          <Input label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@example.com"/>
+          <Input label="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"/>
           <button type="submit" disabled={loading}
             className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium text-sm transition">
-            {loading ? 'Verifying…' : 'Sign In'}
+            {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
       </div>
@@ -407,7 +403,7 @@ function Dashboard({ counts }) {
 }
 
 // ── Keys view ─────────────────────────────────────────────────────────────────
-function Keys({ keys, setKeys, supabase, onRefresh, total, page, onPageChange, search, onSearch, counts, PAGE_SIZE }) {
+function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onSearch, counts, PAGE_SIZE }) {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterTier,   setFilterTier]   = useState('all')
   const [layout,       setLayout]       = useState('list')
@@ -866,8 +862,8 @@ const PAGE_SIZE    = 100
 const EMPTY_COUNTS = { total:0, active:0, expired:0, disabled:0, premium:0, today:0, month:0, recent:[], providers:{} }
 
 export default function Admin() {
-  const [serviceKey,  setServiceKey]  = useState('')
   const [authed,      setAuthed]      = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
   const [view,        setView]        = useState('dashboard')
   const [keys,        setKeys]        = useState([])
   const [keyTotal,    setKeyTotal]    = useState(0)
@@ -877,11 +873,20 @@ export default function Admin() {
   const [loading,     setLoading]     = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const supabase = authed ? adminClient(serviceKey) : null
+  // Restore session on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthed(!!session)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
-  // Fetch server-side counts for the Dashboard — no full row data transferred
+  // Fetch server-side counts for the Dashboard
   const fetchCounts = useCallback(async () => {
-    if (!supabase) return
     const now        = new Date().toISOString()
     const todayStart = new Date(); todayStart.setHours(0,0,0,0)
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0)
@@ -914,11 +919,10 @@ export default function Admin() {
 
     setCounts({ total:total||0, active:active||0, expired:expired||0, disabled:disabled||0,
                 premium:premium||0, today:today||0, month:month||0, recent:recent||[], providers })
-  }, [serviceKey, authed])
+  }, [authed])
 
-  // Paginated key fetch — 100 rows at a time, with optional server-side search
+  // Paginated key fetch
   const fetchKeys = useCallback(async (page=0, search='') => {
-    if (!supabase) return
     setLoading(true)
     const from = page * PAGE_SIZE
     const to   = from + PAGE_SIZE - 1
@@ -930,7 +934,7 @@ export default function Admin() {
     setKeys(data || [])
     setKeyTotal(count || 0)
     setLoading(false)
-  }, [serviceKey, authed])
+  }, [authed])
 
   useEffect(() => { if (authed) { fetchCounts(); fetchKeys(0, '') } }, [authed])
 
@@ -938,16 +942,17 @@ export default function Admin() {
   const handlePageChange = (p) => { setKeyPage(p); fetchKeys(p, keySearch) }
   const handleRefresh    = ()  => { fetchCounts(); fetchKeys(keyPage, keySearch) }
 
-  const handleLogin   = (k) => { setServiceKey(k); setAuthed(true) }
-  const handleSignOut = () => {
-    localStorage.removeItem('seistem_admin_key')
-    setAuthed(false); setServiceKey(''); setKeys([]); setCounts(EMPTY_COUNTS)
+  const handleLogin   = () => { setAuthed(true) }
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    setAuthed(false); setKeys([]); setCounts(EMPTY_COUNTS)
   }
 
-  useEffect(() => {
-    const k = localStorage.getItem('seistem_admin_key')
-    if (k) handleLogin(k)
-  }, [])
+  if (authLoading) return (
+    <div className="min-h-screen bg-[#0D0E12] flex items-center justify-center">
+      <div className="w-6 h-6 border-2 border-purple-500/60 border-t-transparent rounded-full animate-spin"/>
+    </div>
+  )
 
   if (!authed) return <Login onLogin={handleLogin}/>
 
@@ -970,7 +975,7 @@ export default function Admin() {
             </div>
           ) : view==='dashboard'
             ? <Dashboard counts={counts}/>
-            : <Keys keys={keys} setKeys={setKeys} supabase={supabase} onRefresh={handleRefresh}
+            : <Keys keys={keys} setKeys={setKeys} onRefresh={handleRefresh}
                     total={keyTotal} page={keyPage} onPageChange={handlePageChange}
                     search={keySearch} onSearch={handleSearch}
                     counts={counts} PAGE_SIZE={PAGE_SIZE}/>
