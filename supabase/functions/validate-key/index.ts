@@ -9,6 +9,15 @@ const RATE_LIMIT  = 5
 const KEY_REGEX   = /^[A-Z0-9]{2,6}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/
 const HWID_REGEX  = /^[a-f0-9]{64}$/
 
+function versionIsAtLeast(version: string, minimum: string): boolean {
+  const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number)
+  const [a1, a2, a3] = parse(version)
+  const [b1, b2, b3] = parse(minimum)
+  if (a1 !== b1) return a1 > b1
+  if (a2 !== b2) return a2 > b2
+  return a3 >= b3
+}
+
 // Persistent rate limit via DB (survives cold starts).
 // Falls back to allowing the request if the DB call itself fails,
 // so a DB hiccup never locks out legitimate users.
@@ -25,7 +34,7 @@ async function isRateLimited(ip: string): Promise<boolean> {
 Deno.serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin':  '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-app-version',
   }
 
   if (req.method === 'OPTIONS')
@@ -36,6 +45,12 @@ Deno.serve(async (req) => {
       status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+
+  // Minimum version enforcement — set MIN_APP_VERSION secret to force updates
+  const minVersion = Deno.env.get('MIN_APP_VERSION') ?? '1.0.0'
+  const appVersion = req.headers.get('x-app-version') ?? '0.0.0'
+  if (!versionIsAtLeast(appVersion, minVersion))
+    return fail(`Your app is outdated (v${appVersion}). Please update Reiya Account Manager to continue.`)
 
   const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
                ?? req.headers.get('x-real-ip')
