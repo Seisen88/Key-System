@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  PieChart, Pie, Cell,
+} from 'recharts'
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function isActive(k)   { return !k.is_disabled && new Date(k.expires_at) > new Date() }
 function isExpired(k)  { return new Date(k.expires_at) <= new Date() }
 function isDisabled(k) { return k.is_disabled }
@@ -22,7 +26,7 @@ function randomKey() {
   return `SEISEN-${s()}-${s()}-${s()}-${s()}`
 }
 
-// ── Icon primitives ───────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 const Icon = ({ d, size = 16, className = '', ...p }) => (
   <svg width={size} height={size} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} className={className} {...p}>
     <path strokeLinecap="round" strokeLinejoin="round" d={d} />
@@ -46,7 +50,6 @@ const Settings = p => <Icon d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724
 const Layers   = p => <Icon d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" {...p}/>
 const Ban      = p => <Icon d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" {...p}/>
 const FileText = p => <Icon d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" {...p}/>
-const Globe    = p => <Icon d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" {...p}/>
 const Menu     = p => <Icon d="M4 6h16M4 12h16M4 18h16" {...p}/>
 const SignOut  = p => <Icon d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" {...p}/>
 
@@ -76,7 +79,7 @@ function Input({ label, ...p }) {
       {label && <label className="text-white/40 text-xs font-medium">{label}</label>}
       <input
         className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white
-                   outline-none focus:border-purple-500/50 focus:bg-white/[0.06] transition placeholder-white/20"
+                   outline-none focus:border-white/20 transition placeholder-white/20"
         {...p}
       />
     </div>
@@ -92,10 +95,43 @@ function Toggle({ label, icon, checked, onChange }) {
       </div>
       <button
         onClick={() => onChange(!checked)}
-        className={`w-10 h-5 rounded-full transition-all relative flex-shrink-0 ${checked ? 'bg-purple-600' : 'bg-white/10'}`}
+        className={`w-10 h-5 rounded-full transition-all relative flex-shrink-0 ${checked ? 'bg-emerald-500' : 'bg-white/10'}`}
       >
         <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${checked ? 'left-5' : 'left-0.5'}`}/>
       </button>
+    </div>
+  )
+}
+
+// ── Section label (portfolio style) ──────────────────────────────────────────
+function SectionLabel({ index, label }) {
+  return (
+    <div className="flex items-center gap-4 mb-6">
+      <span className="text-[10px] font-mono tracking-widest uppercase text-white/25 whitespace-nowrap">
+        {index} // {label}
+      </span>
+      <div className="flex-1 h-px bg-white/[0.06]"/>
+    </div>
+  )
+}
+
+// ── Chart tooltip ─────────────────────────────────────────────────────────────
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-[#0D0E12] border border-white/[0.1] rounded-xl px-3 py-2 text-xs shadow-xl">
+      <p className="text-white/40 mb-1">{label}</p>
+      <p className="text-white font-mono font-bold">{payload[0].value}</p>
+    </div>
+  )
+}
+
+function PieTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-[#0D0E12] border border-white/[0.1] rounded-xl px-3 py-2 text-xs shadow-xl">
+      <p className="text-white/40">{payload[0].name}</p>
+      <p className="text-white font-mono font-bold">{payload[0].value}</p>
     </div>
   )
 }
@@ -118,25 +154,27 @@ function Login({ onLogin }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0D0E12] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#0D0E12] flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-purple-600/20 border border-purple-500/25 flex items-center justify-center mb-5">
-            <Shield size={20} className="text-purple-400"/>
+        <div className="mb-10">
+          <div className="flex items-center gap-4 mb-6">
+            <span className="text-[10px] font-mono tracking-widest uppercase text-white/25">01 // ADMIN</span>
+            <div className="flex-1 h-px bg-white/[0.06]"/>
           </div>
-          <h1 className="text-lg font-semibold text-white tracking-tight">Seistem Admin</h1>
-          <p className="text-white/35 text-sm mt-1">Admin access only</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white leading-none mb-2">Sign in.</h1>
+          <p className="text-white/35 text-sm">Admin access only.</p>
         </div>
-        <form onSubmit={submit} className="bg-[#13141A] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+        <form onSubmit={submit} className="space-y-3">
           {err && (
-            <div className="bg-red-500/8 border border-red-500/20 text-red-400 text-xs rounded-xl px-4 py-3">
+            <div className="bg-red-500/8 border border-red-500/20 text-red-400 text-xs rounded-2xl px-4 py-3">
               {err}
             </div>
           )}
           <Input label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@example.com"/>
           <Input label="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"/>
           <button type="submit" disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium text-sm transition">
+            className="w-full py-3 rounded-full bg-white text-[#0D0E12] font-bold text-sm
+                       hover:bg-white/90 disabled:opacity-40 transition-all duration-200 mt-2">
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
@@ -151,50 +189,46 @@ function Sidebar({ view, setView, onSignOut, keyCount, open, onClose }) {
     {
       label: 'MAIN',
       items: [
-        { id: 'dashboard', label: 'Overview', icon: <Dash size={15}/> },
-        { id: 'keys',      label: 'Keys',     icon: <Key  size={15}/>, badge: keyCount },
+        { id: 'dashboard', label: 'Overview',     icon: <Dash size={14}/> },
+        { id: 'keys',      label: 'Keys',         icon: <Key  size={14}/>, badge: keyCount },
       ]
     },
     {
       label: 'TOOLS',
       items: [
-        { id: 'hwids',    label: 'HWIDs',        icon: <Shield   size={15}/>, disabled: true },
-        { id: 'bans',     label: 'Discord Bans',  icon: <Ban      size={15}/>, disabled: true },
-        { id: 'logs',     label: 'Discord Logs',  icon: <FileText size={15}/>, disabled: true },
+        { id: 'hwids',  label: 'HWIDs',        icon: <Shield   size={14}/>, disabled: true },
+        { id: 'bans',   label: 'Bans',         icon: <Ban      size={14}/>, disabled: true },
+        { id: 'logs',   label: 'Logs',         icon: <FileText size={14}/>, disabled: true },
       ]
     },
     {
       label: 'SETTINGS',
       items: [
-        { id: 'settings', label: 'Settings', icon: <Settings size={15}/>, disabled: true },
+        { id: 'settings', label: 'Settings', icon: <Settings size={14}/>, disabled: true },
       ]
     }
   ]
 
   const content = (
-    <aside className="w-[200px] bg-[#0D0E12] border-r border-white/[0.06] flex flex-col h-full">
+    <aside className="w-[210px] bg-[#0A0B0F] border-r border-white/[0.05] flex flex-col h-full">
       {/* Logo */}
-      <div className="px-4 py-5 border-b border-white/[0.06] flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-purple-600/25 border border-purple-500/25 flex items-center justify-center flex-shrink-0">
-            <Shield size={14} className="text-purple-400"/>
-          </div>
-          <div>
-            <div className="text-[13px] font-semibold text-white leading-none">Seistem</div>
-            <div className="text-[10px] text-white/30 mt-0.5 leading-none">Admin Panel</div>
-          </div>
+      <div className="px-5 py-6 border-b border-white/[0.05] flex items-center justify-between">
+        <div>
+          <div className="text-[10px] font-mono tracking-widest uppercase text-white/25 mb-1">01 // ADMIN</div>
+          <div className="text-sm font-extrabold tracking-tight text-white">Seistem</div>
         </div>
-        {/* Close button visible only on mobile */}
         <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/60 p-1">
-          <X size={16}/>
+          <X size={15}/>
         </button>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-5">
+      <nav className="flex-1 px-3 py-5 overflow-y-auto space-y-6">
         {sections.map(section => (
           <div key={section.label}>
-            <p className="text-[10px] font-semibold text-white/20 tracking-widest px-2 mb-1.5">{section.label}</p>
+            <p className="text-[9px] font-mono tracking-widest uppercase text-white/20 px-2 mb-2">
+              {section.label}
+            </p>
             <div className="space-y-0.5">
               {section.items.map(item => {
                 const active = view === item.id
@@ -203,21 +237,19 @@ function Sidebar({ view, setView, onSignOut, keyCount, open, onClose }) {
                     onClick={() => { if (!item.disabled) { setView(item.id); onClose?.() } }}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium transition text-left
                       ${active
-                        ? 'bg-purple-600/15 text-purple-300'
+                        ? 'bg-white/[0.06] text-white'
                         : item.disabled
-                          ? 'text-white/18 cursor-not-allowed'
-                          : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'
+                          ? 'text-white/15 cursor-not-allowed'
+                          : 'text-white/35 hover:text-white/70 hover:bg-white/[0.03]'
                       }`}
                   >
-                    <span className={active ? 'text-purple-400' : ''}>{item.icon}</span>
+                    <span className={active ? 'text-white' : 'text-white/30'}>{item.icon}</span>
                     <span className="flex-1">{item.label}</span>
                     {item.badge !== undefined && (
-                      <span className="text-[10px] bg-white/8 text-white/30 px-1.5 py-0.5 rounded-full font-medium tabular-nums">
-                        {item.badge}
-                      </span>
+                      <span className="text-[10px] font-mono text-white/25 tabular-nums">{item.badge}</span>
                     )}
                     {item.disabled && (
-                      <span className="text-[9px] text-white/15 font-normal">soon</span>
+                      <span className="text-[9px] text-white/15 font-mono">soon</span>
                     )}
                   </button>
                 )
@@ -228,9 +260,9 @@ function Sidebar({ view, setView, onSignOut, keyCount, open, onClose }) {
       </nav>
 
       {/* Sign out */}
-      <div className="px-3 py-3 border-t border-white/[0.06]">
+      <div className="px-3 py-4 border-t border-white/[0.05]">
         <button onClick={onSignOut}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] text-white/30 hover:text-red-400 hover:bg-red-500/8 transition">
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] text-white/25 hover:text-red-400 hover:bg-red-500/8 transition">
           <SignOut size={14}/>
           Sign Out
         </button>
@@ -240,163 +272,230 @@ function Sidebar({ view, setView, onSignOut, keyCount, open, onClose }) {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex h-screen sticky top-0 flex-shrink-0">
-        {content}
-      </div>
-
-      {/* Mobile overlay */}
+      <div className="hidden lg:flex h-screen sticky top-0 flex-shrink-0">{content}</div>
       {open && (
         <div className="lg:hidden fixed inset-0 z-40 flex">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}/>
-          <div className="relative z-50 h-full">
-            {content}
-          </div>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}/>
+          <div className="relative z-50 h-full">{content}</div>
         </div>
       )}
     </>
   )
 }
 
-// ── Top header bar ────────────────────────────────────────────────────────────
+// ── Top bar ───────────────────────────────────────────────────────────────────
 function TopBar({ view, onMenuClick }) {
   const crumbs = { dashboard: 'Overview', keys: 'Keys' }
   return (
-    <header className="h-[52px] border-b border-white/[0.06] flex items-center justify-between px-4 sm:px-7 bg-[#0D0E12] flex-shrink-0">
+    <header className="h-[52px] border-b border-white/[0.05] flex items-center justify-between px-5 sm:px-7 bg-[#0A0B0F] flex-shrink-0">
       <div className="flex items-center gap-3">
-        {/* Hamburger - mobile only */}
-        <button onClick={onMenuClick} className="lg:hidden text-white/40 hover:text-white/70 p-1 -ml-1">
-          <Menu size={18}/>
+        <button onClick={onMenuClick} className="lg:hidden text-white/30 hover:text-white/60 p-1 -ml-1">
+          <Menu size={17}/>
         </button>
-        <div className="flex items-center gap-2 text-sm text-white/30">
-          <span className="hidden sm:inline">Dashboard</span>
-          <span className="hidden sm:inline text-white/15">›</span>
-          <span className="text-white/60 font-medium">{crumbs[view] || 'Overview'}</span>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-white/20 font-mono text-xs hidden sm:inline">seistem</span>
+          <span className="text-white/15 hidden sm:inline">›</span>
+          <span className="text-white/60 font-medium text-xs">{crumbs[view] || 'Overview'}</span>
         </div>
       </div>
-      <div className="flex items-center gap-1">
-        <button className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] text-white/35 hover:text-white/60 hover:bg-white/[0.04] transition">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
-          Dark
-        </button>
-        <button className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] text-white/35 hover:text-white/60 hover:bg-white/[0.04] transition">
-          <Globe size={13}/> Docs
-        </button>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/8 transition border border-amber-500/20 ml-1">
-          <span className="hidden sm:inline">★ </span>Premium
-        </button>
+      <div className="flex items-center gap-1.5 text-xs text-white/25 font-mono">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"/>
+        online
       </div>
     </header>
   )
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, icon, accent, color, pct }) {
-  return (
-    <div className={`${accent} border border-white/[0.07] rounded-2xl p-4 sm:p-5`}>
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <span className="text-white/40 text-xs font-medium truncate pr-2">{label}</span>
-        {icon}
-      </div>
-      <div className={`text-2xl sm:text-3xl font-bold ${color} mb-2 tabular-nums`}>
-        {value.toLocaleString()}
-      </div>
-      {pct !== undefined && (
-        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-          <div className={`h-1 ${color.replace('text-','bg-').replace('-400','-500')} rounded-full opacity-50`}
-               style={{width:`${Math.min(pct,100).toFixed(1)}%`}}/>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Dashboard view ────────────────────────────────────────────────────────────
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 function Dashboard({ counts }) {
-  const { total, active, expired, disabled, premium, today: todayN, month: monthN, recent, providers } = counts
+  const { total, active, expired, disabled, premium, today: todayN, month: monthN, recent, providers, daily } = counts
 
-  const stats = [
-    { label:'Total Keys',    value:total,    color:'text-white',       accent:'bg-white/5',         icon:<Key  size={17} className="text-white/30"/> },
-    { label:'Active',        value:active,   color:'text-emerald-400', accent:'bg-emerald-500/8',   icon:<Shield size={17} className="text-emerald-500"/>,   pct: total ? active/total*100   : 0 },
-    { label:'Expired',       value:expired,  color:'text-red-400',     accent:'bg-red-500/8',       icon:<Clock  size={17} className="text-red-500"/>,        pct: total ? expired/total*100  : 0 },
-    { label:'Premium',       value:premium,  color:'text-amber-400',   accent:'bg-amber-500/8',     icon:<span className="text-amber-400 text-base leading-none">★</span>, pct: total ? premium/total*100  : 0 },
-    { label:'Created Today', value:todayN,   color:'text-purple-400',  accent:'bg-purple-500/8',    icon:<Plus   size={17} className="text-purple-500"/> },
-    { label:'This Month',    value:monthN,   color:'text-sky-400',     accent:'bg-sky-500/8',       icon:<Dash   size={17} className="text-sky-500"/> },
+  const providerData = Object.entries(providers)
+    .sort((a,b) => b[1]-a[1])
+    .slice(0, 6)
+    .map(([name, value]) => ({ name, value }))
+
+  const statusData = [
+    { name: 'Active',   value: active,   color: '#10b981' },
+    { name: 'Expired',  value: expired,  color: '#ef4444' },
+    { name: 'Disabled', value: disabled, color: '#f59e0b' },
+  ].filter(d => d.value > 0)
+
+  const PROVIDER_COLORS = ['#00ADB5','#8b5cf6','#f59e0b','#10b981','#ef4444','#6366f1']
+
+  const bigStats = [
+    { label: 'Active Keys',  value: active,  color: 'text-emerald-400', border: 'border-emerald-500/20', bg: 'bg-emerald-500/5', dot: 'bg-emerald-400' },
+    { label: 'Total Keys',   value: total,   color: 'text-white',       border: 'border-white/[0.08]',  bg: 'bg-white/[0.02]',  dot: 'bg-white/40' },
+    { label: 'Expired Keys', value: expired, color: 'text-red-400',     border: 'border-red-500/20',    bg: 'bg-red-500/5',     dot: 'bg-red-400' },
   ]
 
-  const providerList = Object.entries(providers).sort((a,b)=>b[1]-a[1])
+  const smallStats = [
+    { label: 'Premium',     value: premium, color: 'text-amber-400' },
+    { label: 'Disabled',    value: disabled, color: 'text-amber-400' },
+    { label: 'Today',       value: todayN,  color: 'text-white/70' },
+    { label: 'This Month',  value: monthN,  color: 'text-white/70' },
+  ]
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="px-4 sm:px-7 py-5 sm:py-6 border-b border-white/[0.05]">
-        <h1 className="text-lg font-semibold text-white">Overview</h1>
-        <p className="text-white/35 text-sm mt-0.5">Your key system analytics at a glance</p>
-      </div>
+      <div className="px-5 sm:px-8 py-7 max-w-6xl mx-auto space-y-10">
 
-      <div className="px-4 sm:px-7 py-5 sm:py-6 space-y-5 sm:space-y-6">
-        {/* Stats grid — 1 col → 2 col → 3 col */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {stats.map(s => (
-            <StatCard key={s.label} {...s}/>
-          ))}
+        {/* ── Big stats ── */}
+        <div>
+          <SectionLabel index="01" label="KEY HEALTH"/>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            {bigStats.map(s => (
+              <div key={s.label} className={`${s.bg} border ${s.border} rounded-2xl p-5`}>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className={`w-1.5 h-1.5 rounded-full ${s.dot} flex-shrink-0`}/>
+                  <span className="text-[10px] font-mono tracking-widest uppercase text-white/30">{s.label}</span>
+                </div>
+                <p className={`text-4xl font-extrabold tracking-tight ${s.color} tabular-nums`}>
+                  {s.value.toLocaleString()}
+                </p>
+                {total > 0 && (
+                  <p className="text-xs text-white/20 mt-2 font-mono">
+                    {(s.value / total * 100).toFixed(1)}%
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {smallStats.map(s => (
+              <div key={s.label} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl px-4 py-4">
+                <p className="text-[10px] font-mono tracking-widest uppercase text-white/20 mb-2">{s.label}</p>
+                <p className={`text-2xl font-extrabold tracking-tight ${s.color} tabular-nums`}>
+                  {s.value.toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Provider + Recent — stack on mobile */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-[#13141A] border border-white/[0.07] rounded-2xl p-5">
-            <h3 className="font-medium text-white text-sm mb-4">Provider Breakdown</h3>
-            {providerList.length === 0
-              ? <p className="text-white/25 text-sm text-center py-8">No data yet</p>
-              : <div className="space-y-3">
-                  {providerList.map(([name, count]) => (
-                    <div key={name} className="flex items-center gap-3">
-                      <span className="text-white/45 text-xs w-20 truncate capitalize">{name}</span>
-                      <div className="flex-1 bg-white/[0.04] rounded-full h-1.5 overflow-hidden">
-                        <div className="bg-purple-500 h-1.5 rounded-full opacity-70"
-                             style={{width:`${total ? (count/total*100).toFixed(0) : 0}%`}}/>
-                      </div>
-                      <span className="text-white/35 text-xs w-6 text-right tabular-nums">{count}</span>
+        {/* ── Area chart ── */}
+        <div>
+          <SectionLabel index="02" label="KEYS OVER TIME (14 DAYS)"/>
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5">
+            {daily && daily.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={daily} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#00ADB5" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="#00ADB5" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" vertical={false}/>
+                  <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+                  <YAxis tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} allowDecimals={false}/>
+                  <Tooltip content={<ChartTooltip/>}/>
+                  <Area type="monotone" dataKey="count" stroke="#00ADB5" strokeWidth={2} fill="url(#areaGrad)" dot={false} activeDot={{ r: 4, fill: '#00ADB5', stroke: '#0D0E12', strokeWidth: 2 }}/>
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[200px] flex items-center justify-center">
+                <p className="text-white/15 text-sm font-mono">No data yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Donut charts ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+          {/* Provider breakdown */}
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5">
+            <SectionLabel index="03" label="PROVIDER BREAKDOWN"/>
+            {providerData.length > 0 ? (
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width={140} height={140}>
+                  <PieChart>
+                    <Pie data={providerData} cx="50%" cy="50%" innerRadius={42} outerRadius={62} dataKey="value" strokeWidth={0}>
+                      {providerData.map((_, i) => (
+                        <Cell key={i} fill={PROVIDER_COLORS[i % PROVIDER_COLORS.length]}/>
+                      ))}
+                    </Pie>
+                    <Tooltip content={<PieTooltip/>}/>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex-1 space-y-2 min-w-0">
+                  {providerData.map((d, i) => (
+                    <div key={d.name} className="flex items-center gap-2 min-w-0">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PROVIDER_COLORS[i % PROVIDER_COLORS.length] }}/>
+                      <span className="text-xs text-white/40 capitalize truncate flex-1">{d.name}</span>
+                      <span className="text-xs font-mono text-white/60 flex-shrink-0 tabular-nums">{d.value}</span>
                     </div>
                   ))}
                 </div>
-            }
+              </div>
+            ) : (
+              <div className="h-[140px] flex items-center justify-center">
+                <p className="text-white/15 text-sm font-mono">No data yet</p>
+              </div>
+            )}
           </div>
 
-          <div className="bg-[#13141A] border border-white/[0.07] rounded-2xl p-5">
-            <h3 className="font-medium text-white text-sm mb-4">Recently Created</h3>
-            <div className="space-y-2.5">
-              {recent.map(k => (
-                <div key={k.id} className="flex items-center gap-3">
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(k)?'bg-emerald-400':isDisabled(k)?'bg-amber-400':'bg-red-400'}`}/>
-                  <span className="font-mono text-white/40 text-xs flex-1 truncate">{k.key_value}</span>
-                  <span className="text-white/25 text-xs flex-shrink-0 hidden sm:block">{fmtDate(k.created_at)}</span>
+          {/* Key status */}
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5">
+            <SectionLabel index="04" label="KEY STATUS"/>
+            {statusData.length > 0 ? (
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width={140} height={140}>
+                  <PieChart>
+                    <Pie data={statusData} cx="50%" cy="50%" innerRadius={42} outerRadius={62} dataKey="value" strokeWidth={0}>
+                      {statusData.map((d, i) => (
+                        <Cell key={i} fill={d.color}/>
+                      ))}
+                    </Pie>
+                    <Tooltip content={<PieTooltip/>}/>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex-1 space-y-2">
+                  {statusData.map(d => (
+                    <div key={d.name} className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.color }}/>
+                      <span className="text-xs text-white/40 flex-1">{d.name}</span>
+                      <span className="text-xs font-mono text-white/60 tabular-nums">{d.value}</span>
+                    </div>
+                  ))}
+                  {total > 0 && (
+                    <div className="mt-4 h-1.5 bg-white/[0.05] rounded-full overflow-hidden flex gap-px">
+                      {statusData.map(d => (
+                        <div key={d.name} className="h-full rounded-full transition-all"
+                             style={{ width: `${(d.value/total*100).toFixed(1)}%`, background: d.color, opacity: 0.7 }}/>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-              {recent.length === 0 && <p className="text-white/25 text-sm text-center py-6">No keys yet</p>}
-            </div>
+              </div>
+            ) : (
+              <div className="h-[140px] flex items-center justify-center">
+                <p className="text-white/15 text-sm font-mono">No keys yet</p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Health bar */}
-        {total > 0 && (
-          <div className="bg-[#13141A] border border-white/[0.07] rounded-2xl p-5">
-            <h3 className="font-medium text-white text-sm mb-4">Key Health</h3>
-            <div className="flex gap-1 h-2.5 rounded-full overflow-hidden">
-              <div className="bg-emerald-500 opacity-70 transition-all" style={{width:`${(active/total*100).toFixed(1)}%`}}/>
-              <div className="bg-red-500 opacity-70 transition-all"     style={{width:`${(expired/total*100).toFixed(1)}%`}}/>
-              <div className="bg-amber-500 opacity-70 transition-all"   style={{width:`${(disabled/total*100).toFixed(1)}%`}}/>
-            </div>
-            <div className="flex flex-wrap gap-4 mt-3">
-              {[['Active',active,'bg-emerald-500'],['Expired',expired,'bg-red-500'],['Disabled',disabled,'bg-amber-500']].map(([lbl,cnt,clr])=>(
-                <div key={lbl} className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${clr} opacity-70 flex-shrink-0`}/>
-                  <span className="text-white/40 text-xs">{lbl}</span>
-                  <span className="text-white/60 text-xs font-medium tabular-nums">{cnt}</span>
+        {/* ── Recent keys ── */}
+        <div>
+          <SectionLabel index="05" label="RECENTLY CREATED"/>
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+            {recent.length === 0 ? (
+              <div className="py-12 text-center text-white/15 text-sm font-mono">No keys yet</div>
+            ) : (
+              recent.map((k, i) => (
+                <div key={k.id} className={`flex items-center gap-3 px-5 py-3.5 ${i < recent.length-1 ? 'border-b border-white/[0.04]' : ''}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(k)?'bg-emerald-400':isDisabled(k)?'bg-amber-400':'bg-red-400'}`}/>
+                  <span className="font-mono text-xs text-white/50 flex-1 truncate">{k.key_value}</span>
+                  {k.is_premium && <span className="text-[10px] text-amber-400 font-mono">★</span>}
+                  <span className="text-[11px] text-white/20 font-mono flex-shrink-0 hidden sm:block">{fmtDate(k.created_at)}</span>
                 </div>
-              ))}
-            </div>
+              ))
+            )}
           </div>
-        )}
+        </div>
+
       </div>
     </div>
   )
@@ -418,7 +517,6 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
     key_value: randomKey(), hours: 24, is_premium: false, key_name: '', discord_user_id: '', discord_username: ''
   })
 
-  // Search is server-side; status/tier filter applied client-side within the current page
   const filtered = keys.filter(k => {
     if (filterTier === 'standard' && k.is_premium)  return false
     if (filterTier === 'premium'  && !k.is_premium) return false
@@ -500,115 +598,98 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
     a.download = 'seistem_keys.csv'; a.click()
   }
 
-  const tierTabs   = [{id:'all',label:'All'},{id:'standard',label:'Standard'},{id:'premium',label:'Premium'}]
+  const tierTabs   = [{id:'all',label:'All Tiers'},{id:'standard',label:'Standard'},{id:'premium',label:'★ Premium'}]
   const statusTabs = [
     {id:'all',     label:'All',     count: counts.total},
-    {id:'active',  label:'Active',  count: counts.active},
-    {id:'expired', label:'Expired', count: counts.expired},
-    {id:'disabled',label:'Disabled',count: counts.disabled},
+    {id:'active',  label:'Active',  count: counts.active,   color:'emerald'},
+    {id:'expired', label:'Expired', count: counts.expired,  color:'red'},
+    {id:'disabled',label:'Disabled',count: counts.disabled, color:'amber'},
   ]
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Sticky header */}
-      <div className="border-b border-white/[0.05] bg-[#0D0E12] sticky top-0 z-10">
-        {/* Title row */}
-        <div className="flex flex-wrap items-start sm:items-center justify-between gap-3 px-4 sm:px-7 pt-5 pb-3">
+      {/* Header */}
+      <div className="border-b border-white/[0.05] bg-[#0A0B0F] sticky top-0 z-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 sm:px-7 pt-5 pb-3">
           <div>
-            <h1 className="text-lg font-semibold text-white">Keys</h1>
-            <p className="text-white/35 text-sm mt-0.5">{total.toLocaleString()} Keys</p>
+            <div className="flex items-center gap-3 mb-0.5">
+              <span className="text-[10px] font-mono tracking-widest uppercase text-white/25">02 // KEYS</span>
+              <div className="h-px w-8 bg-white/[0.06]"/>
+            </div>
+            <h1 className="text-xl font-extrabold tracking-tight text-white">{total.toLocaleString()} Keys</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={onRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/[0.08] text-white/40 hover:text-white/70 text-xs font-medium transition hover:border-white/15">
-              <Refresh size={13}/> <span className="hidden sm:inline">Refresh</span>
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-white/[0.08] text-white/35 hover:text-white/70 text-xs font-medium transition">
+              <Refresh size={12}/> <span className="hidden sm:inline">Refresh</span>
             </button>
             <button onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/[0.08] text-white/40 hover:text-white/70 text-xs font-medium transition hover:border-white/15">
-              <Download size={13}/> <span className="hidden sm:inline">Export</span>
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-white/[0.08] text-white/35 hover:text-white/70 text-xs font-medium transition">
+              <Download size={12}/> <span className="hidden sm:inline">Export</span>
             </button>
             <button onClick={handleDeleteExpired}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-500/25 text-red-400/70 hover:text-red-400 hover:bg-red-500/8 text-xs font-medium transition">
-              <Trash size={13}/> <span className="hidden sm:inline">Delete expired</span>
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-red-500/20 text-red-400/60 hover:text-red-400 hover:bg-red-500/8 text-xs font-medium transition">
+              <Trash size={12}/> <span className="hidden sm:inline">Delete expired</span>
             </button>
             <button onClick={() => setCreateModal(true)}
-              className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition shadow-lg shadow-purple-600/20">
-              <Plus size={13}/> <span>Create key</span>
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white text-[#0A0B0F] text-xs font-bold transition hover:bg-white/90">
+              <Plus size={12}/> Create key
             </button>
           </div>
         </div>
 
         {/* Search */}
-        <div className="px-4 sm:px-7 pb-3">
+        <div className="px-5 sm:px-7 pb-3">
           <div className="relative">
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/25" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
-            <input value={search} onChange={e=>onSearch(e.target.value)}
-              placeholder="Search key, provider, Discord…"
-              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-9 pr-12 py-2.5 text-sm text-white
-                         outline-none focus:border-purple-500/40 transition placeholder-white/20"/>
-            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-white/20 border border-white/[0.08] rounded px-1.5 py-0.5 font-mono hidden sm:block">
-              /
-            </span>
+            <input value={search} onChange={e=>onSearch(e.target.value)} placeholder="Search key, provider, Discord…"
+              className="w-full bg-white/[0.03] border border-white/[0.07] rounded-2xl pl-9 pr-4 py-2.5 text-sm text-white
+                         outline-none focus:border-white/15 transition placeholder-white/15"/>
           </div>
         </div>
 
-        {/* Filter pills */}
-        <div className="px-4 sm:px-7 pb-4">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Tier */}
-            {tierTabs.map(t => (
-              <button key={t.id} onClick={()=>setFilterTier(t.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition whitespace-nowrap
-                  ${filterTier===t.id
-                    ? t.id==='premium'  ? 'bg-amber-500/15 border-amber-500/35 text-amber-400'
-                    : t.id==='standard' ? 'bg-purple-600/15 border-purple-500/35 text-purple-300'
-                                        : 'bg-white/8 border-white/15 text-white/70'
-                    : 'border-white/[0.07] text-white/30 hover:text-white/55 hover:border-white/15'
-                  }`}>
-                {t.id==='premium'?'⭐ Premium':t.id==='standard'?'✦ Standard':'All Tiers'}
+        {/* Filters */}
+        <div className="px-5 sm:px-7 pb-4 flex items-center gap-1.5 flex-wrap">
+          {tierTabs.map(t => (
+            <button key={t.id} onClick={()=>setFilterTier(t.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition
+                ${filterTier===t.id ? 'bg-white/[0.08] border-white/20 text-white' : 'border-white/[0.06] text-white/25 hover:text-white/50 hover:border-white/12'}`}>
+              {t.label}
+            </button>
+          ))}
+          <div className="w-px h-4 bg-white/[0.06] mx-0.5"/>
+          {statusTabs.map(t => (
+            <button key={t.id} onClick={()=>setFilterStatus(t.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition
+                ${filterStatus===t.id
+                  ? t.color==='emerald' ? 'bg-emerald-500/12 border-emerald-500/30 text-emerald-400'
+                  : t.color==='red'     ? 'bg-red-500/12 border-red-500/30 text-red-400'
+                  : t.color==='amber'   ? 'bg-amber-500/12 border-amber-500/30 text-amber-400'
+                                        : 'bg-white/[0.08] border-white/20 text-white'
+                  : 'border-white/[0.06] text-white/25 hover:text-white/50 hover:border-white/12'}`}>
+              {t.label} <span className="opacity-40 ml-1 tabular-nums">{t.count}</span>
+            </button>
+          ))}
+          <div className="ml-auto flex gap-1">
+            {[{id:'list',icon:<ListIcon size={13}/>},{id:'grid',icon:<GridIcon size={13}/>}].map(l=>(
+              <button key={l.id} onClick={()=>setLayout(l.id)}
+                className={`p-2 rounded-xl border transition
+                  ${layout===l.id?'border-white/15 bg-white/[0.06] text-white':'border-white/[0.06] text-white/25 hover:text-white/50'}`}>
+                {l.icon}
               </button>
             ))}
-
-            <div className="w-px h-4 bg-white/[0.08] mx-0.5 self-center"/>
-
-            {/* Status */}
-            {statusTabs.map(t => (
-              <button key={t.id} onClick={()=>setFilterStatus(t.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition whitespace-nowrap
-                  ${filterStatus===t.id
-                    ? t.id==='active'   ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-400'
-                    : t.id==='expired'  ? 'bg-red-500/15 border-red-500/35 text-red-400'
-                    : t.id==='disabled' ? 'bg-amber-500/15 border-amber-500/35 text-amber-400'
-                                        : 'bg-white/8 border-white/15 text-white/70'
-                    : 'border-white/[0.07] text-white/30 hover:text-white/55 hover:border-white/15'
-                  }`}>
-                {t.label}
-                <span className="ml-1.5 opacity-50 tabular-nums">{t.count}</span>
-              </button>
-            ))}
-
-            {/* Layout toggle */}
-            <div className="ml-auto flex gap-1">
-              {[{id:'list',icon:<ListIcon size={13}/>},{id:'grid',icon:<GridIcon size={13}/>}].map(l=>(
-                <button key={l.id} onClick={()=>setLayout(l.id)}
-                  className={`p-2 rounded-xl border transition
-                    ${layout===l.id?'border-purple-500/35 bg-purple-600/12 text-purple-300':'border-white/[0.07] text-white/30 hover:text-white/60'}`}>
-                  {l.icon}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>
 
       {/* Key list */}
-      <div className={`overflow-y-auto flex-1 px-4 sm:px-7 py-4 sm:py-5
+      <div className={`overflow-y-auto flex-1 px-5 sm:px-7 py-4 sm:py-5
         ${layout==='grid' ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 content-start' : 'space-y-2'}`}>
         {filtered.length === 0 && (
-          <div className="col-span-3 text-center py-20 text-white/20 text-sm">No keys match your filters.</div>
+          <div className="col-span-3 text-center py-20 text-white/15 text-sm font-mono">No keys match your filters.</div>
         )}
         {filtered.map(k => {
           const active   = isActive(k)
@@ -617,101 +698,77 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
           const exp      = expanded[k.id]
 
           return (
-            <div key={k.id} className="bg-[#13141A] border border-white/[0.07] rounded-2xl overflow-hidden hover:border-white/[0.13] transition-all group">
-              {/* Main row */}
-              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-5 py-3.5 sm:py-4">
-                <span className="font-mono text-[12px] sm:text-[13px] text-white/75 flex-1 truncate min-w-0">
+            <div key={k.id} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden hover:border-white/[0.12] transition-all group">
+              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-5 py-3.5">
+                <span className="font-mono text-[12px] sm:text-[13px] text-white/60 flex-1 truncate min-w-0">
                   {k.key_value}
                 </span>
-
-                {/* Badges */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span className={`text-[11px] px-2 sm:px-2.5 py-1 rounded-full font-semibold border whitespace-nowrap
-                    ${disabled ? 'bg-amber-500/12 text-amber-400 border-amber-500/25'
-                    : expired  ? 'bg-red-500/12 text-red-400 border-red-500/25'
-                               : 'bg-emerald-500/12 text-emerald-400 border-emerald-500/25'}`}>
-                    {disabled ? 'Disabled' : expired ? 'Expired' : 'Active'}
+                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-semibold border whitespace-nowrap font-mono
+                    ${disabled ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                    : expired  ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                               : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                    {disabled ? 'disabled' : expired ? 'expired' : 'active'}
                   </span>
                   {k.is_premium && (
-                    <span className="hidden sm:inline text-[11px] px-2.5 py-1 rounded-full font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                      ★ Premium
+                    <span className="hidden sm:inline text-[10px] px-2.5 py-1 rounded-full font-semibold bg-amber-500/8 text-amber-400 border border-amber-500/15 font-mono">
+                      ★ premium
                     </span>
                   )}
                 </div>
-
-                {/* Actions — always visible on mobile, hover on desktop */}
                 <div className="flex items-center gap-0.5 flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                  <button onClick={()=>copyKey(k.key_value,k.id)} title="Copy"
-                    className="p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition">
-                    {copied[k.id] ? <span className="text-emerald-400 text-xs font-bold px-0.5">✓</span> : <Copy size={13}/>}
+                  <button onClick={()=>copyKey(k.key_value,k.id)}
+                    className="p-1.5 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.05] transition">
+                    {copied[k.id] ? <span className="text-emerald-400 text-xs px-0.5">✓</span> : <Copy size={13}/>}
                   </button>
-                  <button onClick={()=>setHwidModal(k)} title="HWID"
-                    className="p-1.5 rounded-lg text-white/30 hover:text-purple-400 hover:bg-purple-500/8 transition">
+                  <button onClick={()=>setHwidModal(k)}
+                    className="p-1.5 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.05] transition">
                     <Shield size={13}/>
                   </button>
                   <button onClick={()=>disabled?handleEnable(k.id):setDisableModal({id:k.id,key:k.key_value,until:''})}
-                    className={`p-1.5 rounded-lg transition ${disabled?'text-amber-400 bg-amber-500/8':'text-white/30 hover:text-amber-400 hover:bg-amber-500/8'}`}>
+                    className={`p-1.5 rounded-lg transition ${disabled?'text-amber-400':'text-white/25 hover:text-amber-400 hover:bg-amber-500/8'}`}>
                     <Clock size={13}/>
                   </button>
                   <button onClick={()=>setEditModal({...k})}
-                    className="p-1.5 rounded-lg text-white/30 hover:text-sky-400 hover:bg-sky-500/8 transition">
+                    className="p-1.5 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.05] transition">
                     <Edit size={13}/>
                   </button>
                   <button onClick={()=>handleDelete(k.id)}
-                    className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/8 transition">
+                    className="p-1.5 rounded-lg text-white/25 hover:text-red-400 hover:bg-red-500/8 transition">
                     <Trash size={13}/>
                   </button>
                 </div>
               </div>
 
-              {/* Sub-info row */}
-              <div className="px-4 sm:px-5 pb-3 flex flex-wrap items-center gap-3 text-[11px] sm:text-[12px] text-white/30">
-                <span className="flex items-center gap-1.5">
-                  <Clock size={11}/>
-                  {active ? `in ${timeLeft(k.expires_at)}` : expired ? 'Expired' : fmtDate(k.expires_at)}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                  {k.key_name || k.provider}
-                </span>
-                {k.key_name && (
-                  <span className="hidden sm:flex items-center gap-1.5">
-                    <Layers size={11}/>{k.provider}
-                  </span>
-                )}
+              <div className="px-4 sm:px-5 pb-3 flex flex-wrap items-center gap-3 text-[11px] text-white/25 font-mono">
+                <span>{active ? `in ${timeLeft(k.expires_at)}` : expired ? 'expired' : fmtDate(k.expires_at)}</span>
+                <span>·</span>
+                <span>{k.key_name || k.provider}</span>
                 {(k.discord_username || k.discord_user_id) && (
-                  <span className="hidden sm:flex items-center gap-1.5">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028 14.09 14.09 0 001.226-1.994.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z"/>
-                    </svg>
-                    {k.discord_username||''}{k.discord_user_id?` (${k.discord_user_id})`:''}
-                  </span>
+                  <span className="hidden sm:inline">{k.discord_username||''}{k.discord_user_id?` (${k.discord_user_id})`:''}</span>
                 )}
                 <button onClick={()=>setExpanded(p=>({...p,[k.id]:!p[k.id]}))}
-                  className="ml-auto flex items-center gap-1 text-white/25 hover:text-white/50 transition">
-                  {exp?'Hide':'Show'} Details
+                  className="ml-auto flex items-center gap-1 hover:text-white/50 transition">
+                  {exp?'hide':'details'}
                   <ChevD size={10} className={`transition-transform ${exp?'rotate-180':''}`}/>
                 </button>
               </div>
 
-              {/* Expanded details */}
               {exp && (
-                <div className="px-4 sm:px-5 pb-4 pt-3 border-t border-white/[0.05] grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-[12px]">
+                <div className="px-4 sm:px-5 pb-4 pt-3 border-t border-white/[0.04] grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-[11px] font-mono">
                   {[
-                    ['ID',       <span className="font-mono text-white/40 truncate">{k.id}</span>],
-                    ['Created',  <span className="text-white/40">{fmtDate(k.created_at)}</span>],
-                    ['Expires',  <span className="text-white/40">{new Date(k.expires_at).toLocaleString()}</span>],
-                    ['HWID',     <span className={k.hwid?'font-mono text-white/40':'text-white/20'}>{k.hwid?k.hwid.slice(0,24)+'…':'Not locked'}</span>],
-                    ['IP',       <span className="text-white/40">{k.ip_address||'—'}</span>],
-                    ['Folder',   <span className="text-white/40">{k.folder||'—'}</span>],
-                    ['One-time', <span className="text-white/40">{k.is_one_time?'Yes':'No'}</span>],
-                    ['No HWID',  <span className="text-white/40">{k.no_hwid_binding?'Yes':'No'}</span>],
-                  ].map(([label,val])=>(
+                    ['id',       k.id],
+                    ['created',  fmtDate(k.created_at)],
+                    ['expires',  new Date(k.expires_at).toLocaleString()],
+                    ['hwid',     k.hwid ? k.hwid.slice(0,24)+'…' : 'not locked'],
+                    ['ip',       k.ip_address || '—'],
+                    ['folder',   k.folder || '—'],
+                    ['one-time', k.is_one_time ? 'yes' : 'no'],
+                    ['no hwid',  k.no_hwid_binding ? 'yes' : 'no'],
+                  ].map(([label, val]) => (
                     <div key={label} className="flex items-baseline gap-2 min-w-0">
-                      <span className="text-white/20 flex-shrink-0">{label}:</span>
-                      <span className="min-w-0 truncate">{val}</span>
+                      <span className="text-white/15 flex-shrink-0">{label}:</span>
+                      <span className="text-white/40 min-w-0 truncate">{val}</span>
                     </div>
                   ))}
                 </div>
@@ -721,37 +778,26 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
         })}
       </div>
 
-      {/* ── Pagination ─────────────────────────────────────────────────────── */}
+      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 sm:px-7 py-3 border-t border-white/[0.05] flex-shrink-0">
-          <span className="text-white/30 text-xs tabular-nums">
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+        <div className="flex items-center justify-between px-5 sm:px-7 py-3 border-t border-white/[0.05] flex-shrink-0">
+          <span className="text-white/20 text-xs font-mono tabular-nums">
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} / {total.toLocaleString()}
           </span>
           <div className="flex items-center gap-1">
-            <button onClick={() => onPageChange(0)} disabled={page === 0}
-              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
-              «
-            </button>
-            <button onClick={() => onPageChange(page - 1)} disabled={page === 0}
-              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
-              ‹
-            </button>
-            <span className="px-3 py-1.5 text-white/50 text-xs tabular-nums">
-              {page + 1} / {totalPages}
-            </span>
-            <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages - 1}
-              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
-              ›
-            </button>
-            <button onClick={() => onPageChange(totalPages - 1)} disabled={page >= totalPages - 1}
-              className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-white/35 text-xs hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition">
-              »
-            </button>
+            {[['«',()=>onPageChange(0),page===0],['‹',()=>onPageChange(page-1),page===0],
+              ['›',()=>onPageChange(page+1),page>=totalPages-1],['»',()=>onPageChange(totalPages-1),page>=totalPages-1]
+            ].map(([label,fn,dis],i)=>(
+              <button key={i} onClick={fn} disabled={dis}
+                className="px-2.5 py-1.5 rounded-lg border border-white/[0.07] text-white/30 text-xs hover:text-white/60 disabled:opacity-20 disabled:cursor-not-allowed transition font-mono">
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       )}
 
-      {/* ── Modals ─────────────────────────────────────────────────────────── */}
+      {/* Modals */}
       {editModal && (
         <Modal title="Edit Key" sub={editModal.key_value} onClose={()=>setEditModal(null)}>
           <div className="space-y-3">
@@ -762,14 +808,14 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
             <Input label="New Expiry" type="datetime-local"
               value={editModal._newExpiry||''} onChange={e=>setEditModal(m=>({...m,_newExpiry:e.target.value,expires_at:e.target.value?new Date(e.target.value).toISOString():m.expires_at}))}/>
             <div className="space-y-2 pt-1">
-              <Toggle label="Premium Key"         icon="⭐" checked={!!editModal.is_premium}           onChange={v=>setEditModal(m=>({...m,is_premium:v}))}/>
-              <Toggle label="One-time Use"        icon="🔐" checked={!!editModal.is_one_time}          onChange={v=>setEditModal(m=>({...m,is_one_time:v}))}/>
-              <Toggle label="Expiry on First Use" icon="⏰" checked={!!editModal.expiry_on_first_use}  onChange={v=>setEditModal(m=>({...m,expiry_on_first_use:v}))}/>
-              <Toggle label="No HWID Binding"    icon="🚫" checked={!!editModal.no_hwid_binding}      onChange={v=>setEditModal(m=>({...m,no_hwid_binding:v}))}/>
+              <Toggle label="Premium Key"         icon="⭐" checked={!!editModal.is_premium}          onChange={v=>setEditModal(m=>({...m,is_premium:v}))}/>
+              <Toggle label="One-time Use"        icon="🔐" checked={!!editModal.is_one_time}         onChange={v=>setEditModal(m=>({...m,is_one_time:v}))}/>
+              <Toggle label="Expiry on First Use" icon="⏰" checked={!!editModal.expiry_on_first_use} onChange={v=>setEditModal(m=>({...m,expiry_on_first_use:v}))}/>
+              <Toggle label="No HWID Binding"    icon="🚫" checked={!!editModal.no_hwid_binding}     onChange={v=>setEditModal(m=>({...m,no_hwid_binding:v}))}/>
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={()=>setEditModal(null)} className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-white/40 text-sm hover:text-white/70 transition">Cancel</button>
-              <button onClick={handleSaveEdit} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Save Changes</button>
+              <button onClick={()=>setEditModal(null)} className="flex-1 py-2.5 rounded-full border border-white/[0.08] text-white/40 text-sm hover:text-white/70 transition">Cancel</button>
+              <button onClick={handleSaveEdit} className="flex-1 py-2.5 rounded-full bg-white text-[#0D0E12] text-sm font-bold transition hover:bg-white/90">Save</button>
             </div>
           </div>
         </Modal>
@@ -779,33 +825,29 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
         <Modal title="HWID Management" sub={hwidModal.key_value} onClose={()=>setHwidModal(null)}>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white/[0.03] border border-white/[0.07] rounded-xl p-4">
-                <p className="text-white/35 text-xs mb-1">Bound HWIDs</p>
-                <p className="text-2xl font-bold text-white tabular-nums">{hwidModal.hwid?'1':'0'}<span className="text-white/25 text-sm font-normal"> / 1</span></p>
+              <div className="bg-white/[0.03] border border-white/[0.07] rounded-2xl p-4">
+                <p className="text-white/30 text-xs font-mono mb-1">bound</p>
+                <p className="text-2xl font-extrabold text-white tabular-nums">{hwidModal.hwid?'1':'0'}<span className="text-white/20 text-sm font-normal"> / 1</span></p>
               </div>
-              <div className="bg-white/[0.03] border border-white/[0.07] rounded-xl p-4">
-                <p className="text-white/35 text-xs mb-1">HWID Limit</p>
-                <p className="text-2xl font-bold text-white">1</p>
+              <div className="bg-white/[0.03] border border-white/[0.07] rounded-2xl p-4">
+                <p className="text-white/30 text-xs font-mono mb-1">limit</p>
+                <p className="text-2xl font-extrabold text-white">1</p>
               </div>
             </div>
-            <div>
-              <p className="text-white/35 text-xs font-medium mb-2">Bound HWID</p>
-              {hwidModal.hwid ? (
-                <div className="bg-white/[0.03] border border-white/[0.07] rounded-xl p-4 flex items-center gap-3">
-                  <span className="font-mono text-xs text-white/50 truncate flex-1">{hwidModal.hwid}</span>
-                  <button onClick={()=>handleClearHwid(hwidModal.id)}
-                    className="text-xs px-3 py-1.5 bg-red-500/8 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/15 transition flex-shrink-0">
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-6 text-center text-white/25 text-sm">
-                  No HWID bound<br/><span className="text-xs text-white/15">Locks on first use</span>
-                </div>
-              )}
-            </div>
-            <button onClick={()=>setHwidModal(null)}
-              className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-sm transition">
+            {hwidModal.hwid ? (
+              <div className="bg-white/[0.03] border border-white/[0.07] rounded-2xl p-4 flex items-center gap-3">
+                <span className="font-mono text-xs text-white/40 truncate flex-1">{hwidModal.hwid}</span>
+                <button onClick={()=>handleClearHwid(hwidModal.id)}
+                  className="text-xs px-3 py-1.5 bg-red-500/8 border border-red-500/20 text-red-400 rounded-full hover:bg-red-500/15 transition flex-shrink-0">
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 text-center text-white/20 text-sm font-mono">
+                not locked · locks on first use
+              </div>
+            )}
+            <button onClick={()=>setHwidModal(null)} className="w-full py-2.5 rounded-full bg-white text-[#0D0E12] font-bold text-sm transition hover:bg-white/90">
               Close
             </button>
           </div>
@@ -813,13 +855,13 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
       )}
 
       {disableModal && (
-        <Modal title="Disable Temporarily" sub={disableModal.key} onClose={()=>setDisableModal(null)}>
+        <Modal title="Disable Key" sub={disableModal.key} onClose={()=>setDisableModal(null)}>
           <div className="space-y-4">
             <Input label="Disable Until (leave blank for indefinite)" type="datetime-local"
               value={disableModal.until} onChange={e=>setDisableModal(m=>({...m,until:e.target.value}))}/>
             <div className="flex gap-3">
-              <button onClick={()=>setDisableModal(null)} className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-white/40 text-sm hover:text-white/70 transition">Cancel</button>
-              <button onClick={handleDisable} className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition">Disable</button>
+              <button onClick={()=>setDisableModal(null)} className="flex-1 py-2.5 rounded-full border border-white/[0.08] text-white/40 text-sm hover:text-white/70 transition">Cancel</button>
+              <button onClick={handleDisable} className="flex-1 py-2.5 rounded-full bg-amber-500 text-[#0D0E12] text-sm font-bold transition hover:bg-amber-400">Disable</button>
             </div>
           </div>
         </Modal>
@@ -847,8 +889,8 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
               <Toggle label="Premium Key" icon="⭐" checked={createForm.is_premium} onChange={v=>setCreateForm(f=>({...f,is_premium:v}))}/>
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={()=>setCreateModal(false)} className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-white/40 text-sm hover:text-white/70 transition">Cancel</button>
-              <button onClick={handleCreateKey} className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Create Key</button>
+              <button onClick={()=>setCreateModal(false)} className="flex-1 py-2.5 rounded-full border border-white/[0.08] text-white/40 text-sm hover:text-white/70 transition">Cancel</button>
+              <button onClick={handleCreateKey} className="flex-1 py-2.5 rounded-full bg-white text-[#0D0E12] text-sm font-bold transition hover:bg-white/90">Create</button>
             </div>
           </div>
         </Modal>
@@ -859,7 +901,7 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 const PAGE_SIZE    = 100
-const EMPTY_COUNTS = { total:0, active:0, expired:0, disabled:0, premium:0, today:0, month:0, recent:[], providers:{} }
+const EMPTY_COUNTS = { total:0, active:0, expired:0, disabled:0, premium:0, today:0, month:0, recent:[], providers:{}, daily:[] }
 
 export default function Admin() {
   const [authed,      setAuthed]      = useState(false)
@@ -873,23 +915,24 @@ export default function Admin() {
   const [loading,     setLoading]     = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Restore session on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setAuthed(!!session)
       setAuthLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setAuthed(!!session)
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  // Fetch server-side counts for the Dashboard
   const fetchCounts = useCallback(async () => {
     const now        = new Date().toISOString()
     const todayStart = new Date(); todayStart.setHours(0,0,0,0)
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0)
+
+    // Daily data: last 14 days
+    const d14 = new Date(); d14.setDate(d14.getDate() - 13); d14.setHours(0,0,0,0)
 
     const [
       { count: total },
@@ -901,6 +944,7 @@ export default function Admin() {
       { count: month },
       { data: recent },
       { data: providerRows },
+      { data: dailyRaw },
     ] = await Promise.all([
       supabase.from('keys').select('*', { count:'exact', head:true }),
       supabase.from('keys').select('*', { count:'exact', head:true }).gt('expires_at', now).eq('is_disabled', false),
@@ -911,25 +955,37 @@ export default function Admin() {
       supabase.from('keys').select('*', { count:'exact', head:true }).gte('created_at', monthStart.toISOString()),
       supabase.from('keys').select('key_value,created_at,expires_at,is_disabled,is_premium').order('created_at', { ascending:false }).limit(6),
       supabase.from('keys').select('provider').limit(5000),
+      supabase.from('keys').select('created_at').gte('created_at', d14.toISOString()),
     ])
 
     const providers = (providerRows || []).reduce((acc, k) => {
       acc[k.provider] = (acc[k.provider] || 0) + 1; return acc
     }, {})
 
+    // Build daily array
+    const dayMap = {}
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i)
+      dayMap[d.toISOString().split('T')[0]] = 0
+    }
+    ;(dailyRaw || []).forEach(k => {
+      const key = k.created_at.split('T')[0]
+      if (key in dayMap) dayMap[key]++
+    })
+    const daily = Object.entries(dayMap).map(([date, count]) => ({
+      date: new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      count,
+    }))
+
     setCounts({ total:total||0, active:active||0, expired:expired||0, disabled:disabled||0,
-                premium:premium||0, today:today||0, month:month||0, recent:recent||[], providers })
+                premium:premium||0, today:today||0, month:month||0, recent:recent||[], providers, daily })
   }, [authed])
 
-  // Paginated key fetch
   const fetchKeys = useCallback(async (page=0, search='') => {
     setLoading(true)
-    const from = page * PAGE_SIZE
-    const to   = from + PAGE_SIZE - 1
+    const from = page * PAGE_SIZE, to = from + PAGE_SIZE - 1
     let q = supabase.from('keys').select('*', { count:'exact' }).order('created_at', { ascending:false }).range(from, to)
-    if (search.trim()) {
-      q = q.or(`key_value.ilike.%${search.trim()}%,discord_username.ilike.%${search.trim()}%,provider.ilike.%${search.trim()}%`)
-    }
+    if (search.trim()) q = q.or(`key_value.ilike.%${search.trim()}%,discord_username.ilike.%${search.trim()}%,provider.ilike.%${search.trim()}%`)
     const { data, count } = await q
     setKeys(data || [])
     setKeyTotal(count || 0)
@@ -941,16 +997,15 @@ export default function Admin() {
   const handleSearch     = (s) => { setKeySearch(s); setKeyPage(0); fetchKeys(0, s) }
   const handlePageChange = (p) => { setKeyPage(p); fetchKeys(p, keySearch) }
   const handleRefresh    = ()  => { fetchCounts(); fetchKeys(keyPage, keySearch) }
-
-  const handleLogin   = () => { setAuthed(true) }
-  const handleSignOut = async () => {
+  const handleLogin      = ()  => setAuthed(true)
+  const handleSignOut    = async () => {
     await supabase.auth.signOut()
     setAuthed(false); setKeys([]); setCounts(EMPTY_COUNTS)
   }
 
   if (authLoading) return (
     <div className="min-h-screen bg-[#0D0E12] flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-purple-500/60 border-t-transparent rounded-full animate-spin"/>
+      <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"/>
     </div>
   )
 
@@ -958,22 +1013,16 @@ export default function Admin() {
 
   return (
     <div className="flex min-h-screen h-screen overflow-hidden bg-[#0D0E12] text-white">
-      <Sidebar
-        view={view}
-        setView={setView}
-        onSignOut={handleSignOut}
-        keyCount={counts.total}
-        open={sidebarOpen}
-        onClose={()=>setSidebarOpen(false)}
-      />
+      <Sidebar view={view} setView={setView} onSignOut={handleSignOut}
+               keyCount={counts.total} open={sidebarOpen} onClose={()=>setSidebarOpen(false)}/>
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
         <TopBar view={view} onMenuClick={()=>setSidebarOpen(true)}/>
         <main className="flex-1 flex flex-col overflow-hidden">
-          {loading ? (
+          {loading && view === 'keys' ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-purple-500/60 border-t-transparent rounded-full animate-spin"/>
+              <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"/>
             </div>
-          ) : view==='dashboard'
+          ) : view === 'dashboard'
             ? <Dashboard counts={counts}/>
             : <Keys keys={keys} setKeys={setKeys} onRefresh={handleRefresh}
                     total={keyTotal} page={keyPage} onPageChange={handlePageChange}
