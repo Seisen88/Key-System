@@ -196,9 +196,9 @@ function Sidebar({ view, setView, onSignOut, keyCount, open, onClose }) {
     {
       label: 'TOOLS',
       items: [
-        { id: 'hwids',  label: 'HWIDs',        icon: <Shield   size={14}/>, disabled: true },
-        { id: 'bans',   label: 'Bans',         icon: <Ban      size={14}/>, disabled: true },
-        { id: 'logs',   label: 'Logs',         icon: <FileText size={14}/>, disabled: true },
+        { id: 'hwid_resets', label: 'HWID Resets', icon: <Shield   size={14}/> },
+        { id: 'bans',        label: 'Bans',         icon: <Ban      size={14}/> },
+        { id: 'audit',       label: 'Audit Log',    icon: <FileText size={14}/> },
       ]
     },
     {
@@ -285,7 +285,7 @@ function Sidebar({ view, setView, onSignOut, keyCount, open, onClose }) {
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
 function TopBar({ view, onMenuClick }) {
-  const crumbs = { dashboard: 'Overview', keys: 'Keys' }
+  const crumbs = { dashboard: 'Overview', keys: 'Keys', audit: 'Audit Log', bans: 'Bans', hwid_resets: 'HWID Resets' }
   return (
     <header className="h-[52px] border-b border-white/[0.05] flex items-center justify-between px-5 sm:px-7 bg-[#0A0B0F] flex-shrink-0">
       <div className="flex items-center gap-3">
@@ -502,7 +502,7 @@ function Dashboard({ counts }) {
 }
 
 // ── Keys view ─────────────────────────────────────────────────────────────────
-function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onSearch, counts, PAGE_SIZE }) {
+function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onSearch, counts, PAGE_SIZE, dateFrom, dateTo, onDateChange }) {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterTier,   setFilterTier]   = useState('all')
   const [layout,       setLayout]       = useState('list')
@@ -512,6 +512,8 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
   const [hwidModal,    setHwidModal]    = useState(null)
   const [disableModal, setDisableModal] = useState(null)
   const [createModal,  setCreateModal]  = useState(false)
+  const [selected,     setSelected]     = useState(new Set())
+  const [bulkLoading,  setBulkLoading]  = useState(false)
 
   const [createForm, setCreateForm] = useState({
     key_value: randomKey(), hours: 24, is_premium: false, key_name: '', discord_user_id: '', discord_username: ''
@@ -532,10 +534,17 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
     setTimeout(() => setCopied(p => ({...p,[id]:false})), 2000)
   }
 
+  const getAdminEmail = async () => {
+    const { data } = await supabase.auth.getSession()
+    return data?.session?.user?.email ?? null
+  }
+
   const handleDelete = async (id) => {
     if (!confirm('Delete this key permanently?')) return
+    const k = keys.find(x => x.id === id)
     await supabase.from('keys').delete().eq('id', id)
-    setKeys(k => k.filter(x => x.id !== id))
+    setKeys(prev => prev.filter(x => x.id !== id))
+    logAudit('delete_key', k?.key_value, id, null, await getAdminEmail())
   }
 
   const handleDeleteExpired = async () => {
@@ -544,6 +553,64 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
     if (!ids.length) return
     await supabase.from('keys').delete().in('id', ids)
     setKeys(k => k.filter(x => !ids.includes(x.id)))
+  }
+
+  // ── Bulk operations ───────────────────────────────────────────────────────
+  const toggleSelect = (id) => setSelected(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const toggleSelectAll = () => {
+    if (selected.size === filtered.length) setSelected(new Set())
+    else setSelected(new Set(filtered.map(k => k.id)))
+  }
+
+  const clearSelection = () => setSelected(new Set())
+
+  const bulkDelete = async () => {
+    if (!confirm(`Delete ${selected.size} keys permanently?`)) return
+    setBulkLoading(true)
+    const ids = [...selected]
+    await supabase.from('keys').delete().in('id', ids)
+    setKeys(k => k.filter(x => !ids.includes(x.id)))
+    setSelected(new Set())
+    setBulkLoading(false)
+  }
+
+  const bulkDisable = async () => {
+    if (!confirm(`Disable ${selected.size} keys?`)) return
+    setBulkLoading(true)
+    const ids = [...selected]
+    await supabase.from('keys').update({ is_disabled: true, disabled_until: null }).in('id', ids)
+    setKeys(k => k.map(x => ids.includes(x.id) ? {...x, is_disabled: true} : x))
+    setSelected(new Set())
+    setBulkLoading(false)
+  }
+
+  const bulkEnable = async () => {
+    setBulkLoading(true)
+    const ids = [...selected]
+    await supabase.from('keys').update({ is_disabled: false, disabled_until: null }).in('id', ids)
+    setKeys(k => k.map(x => ids.includes(x.id) ? {...x, is_disabled: false} : x))
+    setSelected(new Set())
+    setBulkLoading(false)
+  }
+
+  const bulkExtend = async (hours) => {
+    setBulkLoading(true)
+    const ids = [...selected]
+    for (const id of ids) {
+      const k = keys.find(x => x.id === id)
+      if (!k) continue
+      const base   = new Date(k.expires_at) > new Date() ? new Date(k.expires_at) : new Date()
+      const newExp = new Date(base.getTime() + hours * 3_600_000).toISOString()
+      await supabase.from('keys').update({ expires_at: newExp }).eq('id', id)
+      setKeys(prev => prev.map(x => x.id === id ? {...x, expires_at: newExp} : x))
+    }
+    setSelected(new Set())
+    setBulkLoading(false)
   }
 
   const handleSaveEdit = async () => {
@@ -555,18 +622,21 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
   }
 
   const handleDisable = async () => {
-    const { id, until } = disableModal
+    const { id, until, key } = disableModal
     const { error } = await supabase.from('keys').update({
       is_disabled: true, disabled_until: until ? new Date(until).toISOString() : null
     }).eq('id', id)
     if (error) return
     setKeys(k => k.map(x => x.id===id ? {...x,is_disabled:true,disabled_until:until} : x))
     setDisableModal(null)
+    logAudit('disable_key', key, id, { until: until || 'permanent' }, await getAdminEmail())
   }
 
   const handleEnable = async (id) => {
+    const k = keys.find(x => x.id === id)
     await supabase.from('keys').update({ is_disabled:false, disabled_until:null }).eq('id', id)
-    setKeys(k => k.map(x => x.id===id ? {...x,is_disabled:false,disabled_until:null} : x))
+    setKeys(prev => prev.map(x => x.id===id ? {...x,is_disabled:false,disabled_until:null} : x))
+    logAudit('enable_key', k?.key_value, id, null, await getAdminEmail())
   }
 
   const handleClearHwid = async (id) => {
@@ -587,6 +657,7 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
     setKeys(k => [data,...k])
     setCreateModal(false)
     setCreateForm({ key_value:randomKey(), hours:24, is_premium:false, key_name:'', discord_user_id:'', discord_username:'' })
+    logAudit('create_key', createForm.key_value, data.id, { hours: createForm.hours, premium: createForm.is_premium }, await getAdminEmail())
   }
 
   const handleExport = () => {
@@ -652,7 +723,7 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
         </div>
 
         {/* Filters */}
-        <div className="px-5 sm:px-7 pb-4 flex items-center gap-1.5 flex-wrap">
+        <div className="px-5 sm:px-7 pb-3 flex items-center gap-1.5 flex-wrap">
           {tierTabs.map(t => (
             <button key={t.id} onClick={()=>setFilterTier(t.id)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition
@@ -683,6 +754,35 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
             ))}
           </div>
         </div>
+
+        {/* Date range + select all */}
+        <div className="px-5 sm:px-7 pb-4 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Created</span>
+          <input type="date" value={dateFrom} onChange={e => onDateChange(e.target.value, dateTo)}
+            className="bg-white/[0.03] border border-white/[0.07] rounded-xl px-2.5 py-1.5 text-xs text-white/50
+                       outline-none focus:border-white/15 transition [color-scheme:dark]"/>
+          <span className="text-white/20 text-xs">→</span>
+          <input type="date" value={dateTo} onChange={e => onDateChange(dateFrom, e.target.value)}
+            className="bg-white/[0.03] border border-white/[0.07] rounded-xl px-2.5 py-1.5 text-xs text-white/50
+                       outline-none focus:border-white/15 transition [color-scheme:dark]"/>
+          {(dateFrom || dateTo) && (
+            <button onClick={() => onDateChange('', '')}
+              className="text-[10px] font-mono text-white/25 hover:text-red-400 transition px-2 py-1.5 rounded-lg hover:bg-red-500/8">
+              clear
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox"
+                checked={filtered.length > 0 && selected.size === filtered.length}
+                onChange={toggleSelectAll}
+                className="w-3.5 h-3.5 rounded accent-white"/>
+              <span className="text-[11px] text-white/25 font-mono select-none">
+                {selected.size > 0 ? `${selected.size} selected` : 'Select all'}
+              </span>
+            </label>
+          </div>
+        </div>
       </div>
 
       {/* Key list */}
@@ -698,8 +798,13 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
           const exp      = expanded[k.id]
 
           return (
-            <div key={k.id} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden hover:border-white/[0.12] transition-all group">
+            <div key={k.id} className={`border rounded-2xl overflow-hidden transition-all group
+              ${selected.has(k.id)
+                ? 'bg-white/[0.04] border-white/20'
+                : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.12]'}`}>
               <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-5 py-3.5">
+                <input type="checkbox" checked={selected.has(k.id)} onChange={() => toggleSelect(k.id)}
+                  className="w-3.5 h-3.5 rounded flex-shrink-0 accent-white cursor-pointer"/>
                 <span className="font-mono text-[12px] sm:text-[13px] text-white/60 flex-1 truncate min-w-0">
                   {k.key_value}
                 </span>
@@ -777,6 +882,37 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
           )
         })}
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex-shrink-0 border-t border-white/[0.05] bg-[#0D0F14] px-5 sm:px-7 py-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-mono text-white/40 mr-1">{selected.size} selected</span>
+          <button onClick={bulkDelete} disabled={bulkLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-red-500/20 text-red-400 text-xs font-semibold hover:bg-red-500/8 transition disabled:opacity-40">
+            <Trash size={11}/> Delete
+          </button>
+          <button onClick={bulkDisable} disabled={bulkLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-500/20 text-amber-400 text-xs font-semibold hover:bg-amber-500/8 transition disabled:opacity-40">
+            <Clock size={11}/> Disable
+          </button>
+          <button onClick={bulkEnable} disabled={bulkLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-emerald-500/20 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/8 transition disabled:opacity-40">
+            <Shield size={11}/> Enable
+          </button>
+          <div className="flex items-center gap-1">
+            {[24, 48].map(h => (
+              <button key={h} onClick={() => bulkExtend(h)} disabled={bulkLoading}
+                className="px-3 py-1.5 rounded-full border border-white/[0.08] text-white/40 text-xs font-semibold hover:text-white/70 hover:border-white/20 transition disabled:opacity-40">
+                +{h}h
+              </button>
+            ))}
+          </div>
+          <button onClick={clearSelection} className="ml-auto text-xs text-white/20 hover:text-white/50 transition font-mono">
+            cancel
+          </button>
+          {bulkLoading && <div className="w-3.5 h-3.5 border border-white/20 border-t-white/60 rounded-full animate-spin"/>}
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -899,6 +1035,315 @@ function Keys({ keys, setKeys, onRefresh, total, page, onPageChange, search, onS
   )
 }
 
+// ── Audit helper ──────────────────────────────────────────────────────────────
+async function logAudit(action, targetKey, targetId, details, adminEmail) {
+  await supabase.from('audit_log').insert({
+    action, target_key: targetKey ?? null, target_id: String(targetId ?? ''),
+    details: details ?? null, admin_email: adminEmail ?? null,
+  })
+}
+
+// ── Audit Log view ────────────────────────────────────────────────────────────
+function AuditLogView() {
+  const [rows,    setRows]    = useState([])
+  const [loading, setLoading] = useState(true)
+  const [page,    setPage]    = useState(0)
+  const [total,   setTotal]   = useState(0)
+  const PAGE = 50
+
+  const load = useCallback(async (p = 0) => {
+    setLoading(true)
+    const from = p * PAGE, to = from + PAGE - 1
+    const { data, count } = await supabase
+      .from('audit_log')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, to)
+    setRows(data || [])
+    setTotal(count || 0)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load(0) }, [load])
+
+  const actionColor = (a) => {
+    if (a.includes('delete') || a.includes('ban'))    return 'text-red-400'
+    if (a.includes('disable'))                        return 'text-amber-400'
+    if (a.includes('enable') || a.includes('create')) return 'text-emerald-400'
+    return 'text-white/40'
+  }
+
+  const totalPages = Math.ceil(total / PAGE)
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="border-b border-white/[0.05] bg-[#0A0B0F] px-5 sm:px-7 py-5">
+        <div className="flex items-center gap-3 mb-0.5">
+          <span className="text-[10px] font-mono tracking-widest uppercase text-white/25">03 // AUDIT LOG</span>
+          <div className="h-px w-8 bg-white/[0.06]"/>
+        </div>
+        <h1 className="text-xl font-extrabold tracking-tight text-white">{total.toLocaleString()} Events</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-4">
+        {loading ? (
+          <div className="flex items-center justify-center h-40">
+            <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"/>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="text-center text-white/15 text-sm font-mono py-20">No audit events yet.</div>
+        ) : (
+          <div className="space-y-1">
+            {rows.map((r, i) => (
+              <div key={r.id} className="flex items-start gap-3 px-4 py-3 bg-white/[0.02] border border-white/[0.05] rounded-xl">
+                <span className={`text-xs font-mono font-semibold flex-shrink-0 w-28 pt-px ${actionColor(r.action)}`}>{r.action}</span>
+                <span className="font-mono text-xs text-white/30 truncate flex-1 min-w-0">{r.target_key || r.target_id || '—'}</span>
+                {r.details && (
+                  <span className="text-[10px] text-white/20 font-mono hidden sm:block flex-shrink-0">
+                    {JSON.stringify(r.details)}
+                  </span>
+                )}
+                <span className="text-[10px] text-white/20 font-mono flex-shrink-0">
+                  {new Date(r.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-5 sm:px-7 py-3 border-t border-white/[0.05] flex-shrink-0">
+          <span className="text-white/20 text-xs font-mono">{page * PAGE + 1}–{Math.min((page+1)*PAGE, total)} / {total}</span>
+          <div className="flex gap-1">
+            {[['‹',()=>{ const p=page-1; setPage(p); load(p) },page===0],
+              ['›',()=>{ const p=page+1; setPage(p); load(p) },page>=totalPages-1]
+            ].map(([label,fn,dis],i)=>(
+              <button key={i} onClick={fn} disabled={dis}
+                className="px-2.5 py-1.5 rounded-lg border border-white/[0.07] text-white/30 text-xs hover:text-white/60 disabled:opacity-20 transition font-mono">
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Bans view ─────────────────────────────────────────────────────────────────
+function BansView() {
+  const [bans,    setBans]    = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form,    setForm]    = useState({ ip_address:'', reason:'', banned_until:'' })
+  const [adding,  setAdding]  = useState(false)
+  const [err,     setErr]     = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('bans').select('*').order('created_at', { ascending: false })
+    setBans(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const addBan = async () => {
+    if (!form.ip_address.trim()) return
+    setAdding(true); setErr('')
+    const { data: session } = await supabase.auth.getSession()
+    const email = session?.session?.user?.email
+    const { error } = await supabase.from('bans').insert({
+      ip_address: form.ip_address.trim(),
+      reason: form.reason || null,
+      banned_until: form.banned_until ? new Date(form.banned_until).toISOString() : null,
+      banned_by: email,
+    })
+    if (error) { setErr(error.message); setAdding(false); return }
+    await logAudit('ban_ip', null, form.ip_address, { reason: form.reason }, email)
+    setForm({ ip_address:'', reason:'', banned_until:'' })
+    setAdding(false)
+    load()
+  }
+
+  const removeBan = async (id, ip) => {
+    await supabase.from('bans').delete().eq('id', id)
+    const { data: session } = await supabase.auth.getSession()
+    await logAudit('unban_ip', null, ip, null, session?.session?.user?.email)
+    setBans(b => b.filter(x => x.id !== id))
+  }
+
+  const isPermanent = (b) => !b.banned_until
+  const isActive    = (b) => !b.banned_until || new Date(b.banned_until) > new Date()
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="border-b border-white/[0.05] bg-[#0A0B0F] px-5 sm:px-7 py-5">
+        <div className="flex items-center gap-3 mb-0.5">
+          <span className="text-[10px] font-mono tracking-widest uppercase text-white/25">04 // BANS</span>
+          <div className="h-px w-8 bg-white/[0.06]"/>
+        </div>
+        <h1 className="text-xl font-extrabold tracking-tight text-white">{bans.length} Banned IPs</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-5 space-y-5">
+        {/* Add ban form */}
+        <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5 space-y-3">
+          <p className="text-xs font-mono text-white/30 uppercase tracking-widest">Add Ban</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input label="IP Address" value={form.ip_address} onChange={e=>setForm(f=>({...f,ip_address:e.target.value}))} placeholder="1.2.3.4"/>
+            <Input label="Reason" value={form.reason} onChange={e=>setForm(f=>({...f,reason:e.target.value}))} placeholder="optional"/>
+            <Input label="Banned Until (blank = permanent)" type="datetime-local" value={form.banned_until} onChange={e=>setForm(f=>({...f,banned_until:e.target.value}))}/>
+          </div>
+          {err && <p className="text-red-400 text-xs font-mono">{err}</p>}
+          <button onClick={addBan} disabled={adding || !form.ip_address.trim()}
+            className="px-5 py-2 rounded-full bg-white text-[#0D0E12] font-bold text-xs hover:bg-white/90 disabled:opacity-40 transition">
+            {adding ? 'Banning…' : 'Ban IP'}
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"/>
+          </div>
+        ) : bans.length === 0 ? (
+          <div className="text-center text-white/15 text-sm font-mono py-12">No bans yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {bans.map(b => (
+              <div key={b.id} className="flex items-center gap-3 px-4 py-3.5 bg-white/[0.02] border border-white/[0.06] rounded-2xl">
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(b)?'bg-red-400':'bg-white/20'}`}/>
+                <span className="font-mono text-sm text-white/70 flex-shrink-0">{b.ip_address}</span>
+                <span className="text-xs text-white/25 truncate flex-1">{b.reason || '—'}</span>
+                <span className="text-[10px] font-mono text-white/20 hidden sm:block flex-shrink-0">
+                  {isPermanent(b) ? 'permanent' : `until ${new Date(b.banned_until).toLocaleDateString()}`}
+                </span>
+                <button onClick={() => removeBan(b.id, b.ip_address)}
+                  className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/8 transition flex-shrink-0">
+                  <Trash size={13}/>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── HWID Reset Requests view ──────────────────────────────────────────────────
+function HwidResetsView() {
+  const [requests, setRequests] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [filter,   setFilter]   = useState('pending')
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('hwid_resets').select('*').order('created_at', { ascending: false })
+    setRequests(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const resolve = async (id, keyValue, status) => {
+    const { data: session } = await supabase.auth.getSession()
+    const email = session?.session?.user?.email
+
+    if (status === 'approved') {
+      await supabase.from('keys').update({ hwid: null }).eq('key_value', keyValue)
+      await logAudit('hwid_reset_approved', keyValue, null, null, email)
+    } else {
+      await logAudit('hwid_reset_denied', keyValue, null, null, email)
+    }
+
+    await supabase.from('hwid_resets').update({
+      status, resolved_at: new Date().toISOString(), resolved_by: email
+    }).eq('id', id)
+
+    setRequests(r => r.map(x => x.id === id ? {...x, status, resolved_by: email} : x))
+  }
+
+  const displayed = requests.filter(r => filter === 'all' || r.status === filter)
+  const pending   = requests.filter(r => r.status === 'pending').length
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="border-b border-white/[0.05] bg-[#0A0B0F] px-5 sm:px-7 py-5">
+        <div className="flex items-center gap-3 mb-0.5">
+          <span className="text-[10px] font-mono tracking-widest uppercase text-white/25">05 // HWID RESETS</span>
+          <div className="h-px w-8 bg-white/[0.06]"/>
+        </div>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-extrabold tracking-tight text-white">HWID Reset Requests</h1>
+          {pending > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/25 text-amber-400 text-[11px] font-mono font-semibold">
+              {pending} pending
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="border-b border-white/[0.05] px-5 sm:px-7 py-3 flex gap-1.5">
+        {['pending','approved','denied','all'].map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition capitalize
+              ${filter === f ? 'bg-white/[0.08] border-white/20 text-white' : 'border-white/[0.06] text-white/25 hover:text-white/50'}`}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-4">
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"/>
+          </div>
+        ) : displayed.length === 0 ? (
+          <div className="text-center text-white/15 text-sm font-mono py-20">No {filter} requests.</div>
+        ) : (
+          <div className="space-y-2">
+            {displayed.map(r => (
+              <div key={r.id} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl px-5 py-4">
+                <div className="flex items-start gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-mono text-sm text-white/70 truncate">{r.key_value}</p>
+                    <p className="text-xs text-white/30 mt-1">{r.reason || 'No reason provided'}</p>
+                    <p className="text-[10px] text-white/20 font-mono mt-1">
+                      {new Date(r.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {r.status === 'pending' ? (
+                      <>
+                        <button onClick={() => resolve(r.id, r.key_value, 'approved')}
+                          className="px-3 py-1.5 rounded-full bg-emerald-500/12 border border-emerald-500/25 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition">
+                          Approve
+                        </button>
+                        <button onClick={() => resolve(r.id, r.key_value, 'denied')}
+                          className="px-3 py-1.5 rounded-full bg-red-500/8 border border-red-500/20 text-red-400 text-xs font-semibold hover:bg-red-500/15 transition">
+                          Deny
+                        </button>
+                      </>
+                    ) : (
+                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border font-mono
+                        ${r.status === 'approved'
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          : 'bg-red-500/8 border-red-500/20 text-red-400'}`}>
+                        {r.status}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 const PAGE_SIZE    = 100
 const EMPTY_COUNTS = { total:0, active:0, expired:0, disabled:0, premium:0, today:0, month:0, recent:[], providers:{}, daily:[] }
@@ -914,6 +1359,8 @@ export default function Admin() {
   const [counts,      setCounts]      = useState(EMPTY_COUNTS)
   const [loading,     setLoading]     = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [keyDateFrom, setKeyDateFrom] = useState('')
+  const [keyDateTo,   setKeyDateTo]   = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -925,6 +1372,17 @@ export default function Admin() {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  // Real-time: refresh dashboard counts on any keys table change
+  useEffect(() => {
+    if (!authed) return
+    const channel = supabase.channel('admin-keys-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'keys' }, () => {
+        fetchCounts()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [authed, fetchCounts])
 
   const fetchCounts = useCallback(async () => {
     const now        = new Date().toISOString()
@@ -981,11 +1439,13 @@ export default function Admin() {
                 premium:premium||0, today:today||0, month:month||0, recent:recent||[], providers, daily })
   }, [authed])
 
-  const fetchKeys = useCallback(async (page=0, search='') => {
+  const fetchKeys = useCallback(async (page=0, search='', dateFrom='', dateTo='') => {
     setLoading(true)
     const from = page * PAGE_SIZE, to = from + PAGE_SIZE - 1
     let q = supabase.from('keys').select('*', { count:'exact' }).order('created_at', { ascending:false }).range(from, to)
     if (search.trim()) q = q.or(`key_value.ilike.%${search.trim()}%,discord_username.ilike.%${search.trim()}%,provider.ilike.%${search.trim()}%`)
+    if (dateFrom) q = q.gte('created_at', new Date(dateFrom).toISOString())
+    if (dateTo)   q = q.lte('created_at', new Date(dateTo + 'T23:59:59').toISOString())
     const { data, count } = await q
     setKeys(data || [])
     setKeyTotal(count || 0)
@@ -994,9 +1454,13 @@ export default function Admin() {
 
   useEffect(() => { if (authed) { fetchCounts(); fetchKeys(0, '') } }, [authed])
 
-  const handleSearch     = (s) => { setKeySearch(s); setKeyPage(0); fetchKeys(0, s) }
-  const handlePageChange = (p) => { setKeyPage(p); fetchKeys(p, keySearch) }
-  const handleRefresh    = ()  => { fetchCounts(); fetchKeys(keyPage, keySearch) }
+  const handleSearch     = (s) => { setKeySearch(s); setKeyPage(0); fetchKeys(0, s, keyDateFrom, keyDateTo) }
+  const handlePageChange = (p) => { setKeyPage(p); fetchKeys(p, keySearch, keyDateFrom, keyDateTo) }
+  const handleRefresh    = ()  => { fetchCounts(); fetchKeys(keyPage, keySearch, keyDateFrom, keyDateTo) }
+  const handleDateChange = (from, to) => {
+    setKeyDateFrom(from); setKeyDateTo(to); setKeyPage(0)
+    fetchKeys(0, keySearch, from, to)
+  }
   const handleLogin      = ()  => setAuthed(true)
   const handleSignOut    = async () => {
     await supabase.auth.signOut()
@@ -1022,12 +1486,16 @@ export default function Admin() {
             <div className="flex-1 flex items-center justify-center">
               <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"/>
             </div>
-          ) : view === 'dashboard'
-            ? <Dashboard counts={counts}/>
-            : <Keys keys={keys} setKeys={setKeys} onRefresh={handleRefresh}
-                    total={keyTotal} page={keyPage} onPageChange={handlePageChange}
-                    search={keySearch} onSearch={handleSearch}
-                    counts={counts} PAGE_SIZE={PAGE_SIZE}/>
+          ) : view === 'dashboard'    ? <Dashboard counts={counts}/>
+            : view === 'keys'         ? <Keys keys={keys} setKeys={setKeys} onRefresh={handleRefresh}
+                                              total={keyTotal} page={keyPage} onPageChange={handlePageChange}
+                                              search={keySearch} onSearch={handleSearch}
+                                              counts={counts} PAGE_SIZE={PAGE_SIZE}
+                                              dateFrom={keyDateFrom} dateTo={keyDateTo} onDateChange={handleDateChange}/>
+            : view === 'audit'        ? <AuditLogView/>
+            : view === 'bans'         ? <BansView/>
+            : view === 'hwid_resets'  ? <HwidResetsView/>
+            : null
           }
         </main>
       </div>

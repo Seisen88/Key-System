@@ -5,7 +5,7 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
-// Cooldown is determined per-request from key_hours (see below)
+const DISCORD_WEBHOOK = Deno.env.get('DISCORD_WEBHOOK_URL') ?? ''
 
 function generateKey(): string {
   const chars   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -23,6 +23,46 @@ async function verifyWorkinkToken(token: string): Promise<boolean> {
     return data.valid === true
   } catch {
     return false
+  }
+}
+
+async function sendDiscordWebhook(payload: {
+  key: string
+  provider: string
+  hours: number
+  ip: string
+  extended?: boolean
+  expiresAt: string
+}) {
+  if (!DISCORD_WEBHOOK) return
+  const color = payload.extended ? 0x3b82f6 : 0x00adb5
+  const title = payload.extended ? '🔄 Key Extended' : '🔑 Key Generated'
+  const expiry = new Date(payload.expiresAt).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
+  }) + ' UTC'
+
+  try {
+    await fetch(DISCORD_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title,
+          color,
+          fields: [
+            { name: 'Key',      value: `\`${payload.key}\``,      inline: false },
+            { name: 'Provider', value: payload.provider,          inline: true  },
+            { name: 'Duration', value: `${payload.hours}h`,       inline: true  },
+            { name: 'Expires',  value: expiry,                    inline: true  },
+            { name: 'IP',       value: `||${payload.ip}||`,       inline: true  },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: 'Seistem Key System' },
+        }]
+      })
+    })
+  } catch {
+    // webhook failure is non-fatal
   }
 }
 
@@ -46,14 +86,14 @@ Deno.serve(async (req) => {
     const key_hours = body.key_hours
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
 
-    // ── Verify work.ink token (anti-bypass) ───────────────────────
+    // ── Verify work.ink token ─────────────────────────────────────
     if (provider === 'workink') {
       if (!token) return fail('Missing work.ink token. Complete the checkpoint first.')
       const valid = await verifyWorkinkToken(token)
       if (!valid) return fail('Invalid or already used checkpoint token. Please redo the checkpoint.')
     }
 
-    // ── Verify LootLabs puid (postback anti-bypass) ────────────────
+    // ── Verify LootLabs puid ──────────────────────────────────────
     if (provider === 'lootlabs') {
       const puid = body.puid
       if (!puid) return fail('Missing LootLabs token. Complete the checkpoint first.')
@@ -71,16 +111,15 @@ Deno.serve(async (req) => {
           headers: { ...cors, 'Content-Type': 'application/json' }
         })
 
-      // Mark as used to prevent replay
       await supabase
         .from('lootlabs_tokens')
         .update({ status: 'used' })
         .eq('puid', puid)
     }
 
-    const keyHours   = [24, 48].includes(Number(key_hours)) ? Number(key_hours) : 24
+    const keyHours = [24, 48].includes(Number(key_hours)) ? Number(key_hours) : 24
 
-    // ── Extend existing key: add time, skip rate limit ────────────
+    // ── Extend existing key ───────────────────────────────────────
     if (body.existing_key) {
       const { data: existing } = await supabase
         .from('keys')
@@ -90,7 +129,6 @@ Deno.serve(async (req) => {
 
       if (!existing) return fail('Key not found.')
 
-      // Add hours to current expiry (or from now if already expired)
       const base      = new Date(existing.expires_at) > new Date()
                           ? new Date(existing.expires_at)
                           : new Date()
@@ -99,14 +137,16 @@ Deno.serve(async (req) => {
       await supabase.from('keys').update({ expires_at: newExpiry }).eq('key_value', body.existing_key)
       await supabase.from('rate_limits').upsert({ ip_address: ip, last_keygen: new Date().toISOString() })
 
+      sendDiscordWebhook({ key: body.existing_key, provider: provider ?? 'unknown', hours: keyHours, ip, extended: true, expiresAt: newExpiry })
+
       return new Response(JSON.stringify({ key: body.existing_key, expires_at: newExpiry, key_hours: keyHours }), {
         headers: { ...cors, 'Content-Type': 'application/json' }
       })
     }
 
-    const cooldownMs = keyHours * 60 * 60 * 1000   // cooldown = key duration, not hardcoded 24h
+    const cooldownMs = keyHours * 60 * 60 * 1000
 
-    // ── Rate limit: 1 key per IP per key_hours ────────────────────
+    // ── Rate limit ────────────────────────────────────────────────
     const { data: rateData } = await supabase
       .from('rate_limits')
       .select('last_keygen')
@@ -123,10 +163,9 @@ Deno.serve(async (req) => {
         }), { headers: { ...cors, 'Content-Type': 'application/json' } })
       }
     }
-    const expiresAt = new Date(Date.now() + keyHours * 60 * 60 * 1000).toISOString()
 
-    // ── Generate key ──────────────────────────────────────────────
-    const key = generateKey()
+    const expiresAt = new Date(Date.now() + keyHours * 60 * 60 * 1000).toISOString()
+    const key       = generateKey()
 
     const { error } = await supabase.from('keys').insert({
       key_value:  key,
@@ -137,11 +176,12 @@ Deno.serve(async (req) => {
 
     if (error) throw error
 
-    // ── Update rate limit ─────────────────────────────────────────
     await supabase.from('rate_limits').upsert({
       ip_address:  ip,
       last_keygen: new Date().toISOString(),
     })
+
+    sendDiscordWebhook({ key, provider: provider ?? 'unknown', hours: keyHours, ip, expiresAt })
 
     return new Response(JSON.stringify({ key, expires_at: expiresAt, key_hours: keyHours }), {
       headers: { ...cors, 'Content-Type': 'application/json' }

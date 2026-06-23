@@ -43,6 +43,19 @@ Deno.serve(async (req) => {
   if (isRateLimited(clientIp))
     return fail('Too many requests', 429)
 
+  // IP ban check
+  if (clientIp !== 'unknown') {
+    const { data: ban } = await supabase
+      .from('bans')
+      .select('banned_until')
+      .eq('ip_address', clientIp)
+      .single()
+    if (ban) {
+      const stillBanned = !ban.banned_until || new Date(ban.banned_until) > new Date()
+      if (stillBanned) return fail('Your IP has been banned from this service.', 403)
+    }
+  }
+
   try {
     const { key, hwid } = await req.json()
 

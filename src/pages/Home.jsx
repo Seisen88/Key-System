@@ -83,6 +83,14 @@ export default function Home() {
 
   const formatDuration = (h) => h < 24 ? `${h}h` : `${Math.floor(h / 24)}d${h % 24 ? ` ${h % 24}h` : ''}`
 
+  const getTimeLeft = (expiresAt) => {
+    const ms = new Date(expiresAt) - new Date()
+    if (ms <= 0) return { label: 'Expired', urgent: true }
+    const h = Math.floor(ms / 3_600_000), m = Math.floor((ms % 3_600_000) / 60_000)
+    const label = h > 48 ? `${Math.floor(h/24)}d ${h%24}h left` : h > 0 ? `${h}h ${m}m left` : `${m}m left`
+    return { label, urgent: h < 6 }
+  }
+
   const copyKey = () => {
     navigator.clipboard.writeText(activeKey.key)
     setKeyCopied(true)
@@ -109,6 +117,14 @@ export default function Home() {
             >
               {activeKey.key}
             </p>
+            {(() => { const {label, urgent} = getTimeLeft(activeKey.expires_at); return (
+              <div className={`mb-4 px-3.5 py-2 rounded-xl border text-xs font-mono flex items-center gap-2
+                ${urgent ? 'bg-red-500/8 border-red-500/20 text-red-400' : 'bg-accent/5 border-accent/15 text-accent'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgent ? 'bg-red-400' : 'bg-accent'}`}/>
+                {label}
+                {urgent && <span className="ml-auto font-semibold">Renew now →</span>}
+              </div>
+            )})()}
             <div className="flex items-center justify-between">
               <span className="text-xs text-dim font-mono">
                 {new Date(activeKey.expires_at).toLocaleDateString()}
@@ -289,7 +305,9 @@ export default function Home() {
 
         {/* ── Footer ─────────────────────────────────────────────── */}
         <div className="mt-6 flex items-center justify-between">
-          <p className="text-xs text-dim">Already have a key? Paste it in the app.</p>
+          <a href="/key" className="text-xs text-dim hover:text-white/50 transition">
+            Already have a key? <span className="underline underline-offset-2">Check status →</span>
+          </a>
           {(visitCount != null || downloadCount != null) && (
             <div className="flex items-center gap-2 text-xs font-mono text-dim">
               {visitCount != null && <span>{visitCount.toLocaleString()}</span>}
