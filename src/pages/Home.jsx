@@ -58,7 +58,7 @@ export default function Home() {
       domain: '//dc9xwpjprguup.cloudfront.net',
       link: appVersion.download_url,
     })))))
-    window.location.href = `https://loot-reward.com/t?cc=${cc}`
+    window.open(`https://loot-reward.com/t?cc=${cc}`, '_blank')
     setTimeout(() => setDownloading(false), 3000)
   }
 
