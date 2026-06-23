@@ -1,0 +1,77 @@
+{
+  "backed_up_at": "2026-06-23T15:20:57.121Z",
+  "supabase_url": "https://hmrypwvgyapyvpmdsstu.supabase.co",
+  "tables": [
+    {
+      "table": "keys",
+      "rows": 0,
+      "status": "dry-run"
+    },
+    {
+      "table": "roblox_accounts",
+      "rows": 0,
+      "status": "dry-run"
+    },
+    {
+      "table": "rate_limits",
+      "rows": 0,
+      "status": "dry-run"
+    },
+    {
+      "table": "validate_rate_limits",
+      "rows": 0,
+      "status": "dry-run"
+    },
+    {
+      "table": "integrations",
+      "rows": 3,
+      "status": "dry-run"
+    },
+    {
+      "table": "bans",
+      "rows": 0,
+      "status": "dry-run"
+    },
+    {
+      "table": "lootlabs_tokens",
+      "rows": 0,
+      "status": "dry-run"
+    },
+    {
+      "table": "releases",
+      "rows": 0,
+      "status": "dry-run"
+    }
+  ],
+  "edge_functions": [
+    "generate-key",
+    "get-link",
+    "lookup-key",
+    "lootlabs-postback",
+    "reset-hwid",
+    "validate-key"
+  ],
+  "secrets_needed": [
+    "SUPABASE_SERVICE_ROLE_KEY     (new project → Settings → API → service_role)",
+    "SUPABASE_ANON_KEY             (new project → Settings → API → anon/public)",
+    "SUPABASE_URL                  (new project → Settings → API → Project URL)",
+    "WORKINK_API_KEY               (Edge Function secret — copy value before deleting old project)",
+    "SITE_URL                      (Edge Function secret — your public site URL)",
+    "LOOTLABS_API_KEY              (Edge Function secret — copy value before deleting old project)",
+    "LOCKR_API_KEY                 (Edge Function secret — copy value before deleting old project)",
+    "VALIDATION_HMAC_SECRET        (Edge Function secret — copy value before deleting old project)",
+    "ADMIN_LOOKUP_SECRET           (Edge Function secret — sk_lookup_r8m2x9kq4zt7nv3fw6yj)",
+    "VITE_SUPABASE_URL             (.env — new project URL)",
+    "VITE_SUPABASE_ANON_KEY        (.env — new anon key)",
+    "VITE_ADMIN_LOOKUP_SECRET      (.env — same value as ADMIN_LOOKUP_SECRET above)",
+    "_URL_XOR in lib.rs            (re-XOR the new Supabase URL)",
+    "_ANON_XOR in lib.rs           (re-XOR the new anon key)"
+  ],
+  "notes": [
+    "Edge function source code is in supabase/functions/ — already in your repo.",
+    "Migrations are in supabase/migrations/ — run them in order on the new project.",
+    "Secrets must be re-added manually in the new Supabase project dashboard.",
+    "After restoring, update VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env",
+    "Also update the XOR-encoded URL/anon key in src-tauri/src/lib.rs (Reiya app)."
+  ]
+}

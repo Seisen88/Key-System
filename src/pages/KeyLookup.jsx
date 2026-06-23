@@ -52,6 +52,7 @@ export default function KeyLookup() {
 
     const { data, error: fnErr } = await supabase.functions.invoke('lookup-key', {
       body: { key: val },
+      headers: { 'x-admin-secret': import.meta.env.VITE_ADMIN_LOOKUP_SECRET ?? '' },
     })
 
     setLoading(false)

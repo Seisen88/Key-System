@@ -41,27 +41,18 @@ async function getWorkinkLink(persistentLink: string, destination: string): Prom
 // ── Lockr: create a fresh locker per step ────────────────────────────────────
 async function getLockrLink(destination: string): Promise<string | null> {
   try {
-    const resp = await fetch('https://lockr.net/api/v1/lockers', {
+    const resp = await fetch('https://lockr.so/api/v1/lockers', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${LOCKR_API_KEY}`,
         'Content-Type':  'application/json',
       },
-      body: JSON.stringify({
-        title:  'Account Manager',
-        target: destination,
-      }),
+      body: JSON.stringify({ title: 'Account Manager', target: destination }),
     })
     const data = await resp.json()
-    console.log('Lockr response:', JSON.stringify(data))
-    // Try common response shapes
-    if (data.url)  return data.url
-    if (data.link) return data.link
-    if (data.id)   return `https://lockr.so/${data.id}`
-    if (data.data?.url)  return data.data.url
-    if (data.data?.link) return data.data.link
-    if (data.data?.id)   return `https://lockr.so/${data.data.id}`
-    return null
+    const d = data?.data ?? {}
+    return data.url ?? data.link ?? (data.id ? `https://lockr.so/${data.id}` : null)
+      ?? d.url ?? d.link ?? (d.id ? `https://lockr.so/${d.id}` : null) ?? null
   } catch (e) {
     console.error('Lockr fetch error:', e)
     return null

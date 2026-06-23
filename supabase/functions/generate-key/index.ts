@@ -86,35 +86,39 @@ Deno.serve(async (req) => {
     const key_hours = body.key_hours
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
 
-    // ── Verify work.ink token ─────────────────────────────────────
-    if (provider === 'workink') {
-      if (!token) return fail('Missing work.ink token. Complete the checkpoint first.')
-      const valid = await verifyWorkinkToken(token)
-      if (!valid) return fail('Invalid or already used checkpoint token. Please redo the checkpoint.')
-    }
+    const SANDBOX = (Deno.env.get('SANDBOX') ?? 'false').toLowerCase() === 'true'
 
-    // ── Verify LootLabs puid ──────────────────────────────────────
-    if (provider === 'lootlabs') {
-      const puid = body.puid
-      if (!puid) return fail('Missing LootLabs token. Complete the checkpoint first.')
+    if (!SANDBOX) {
+      // ── Verify work.ink token ───────────────────────────────────
+      if (provider === 'workink') {
+        if (!token) return fail('Missing work.ink token. Complete the checkpoint first.')
+        const valid = await verifyWorkinkToken(token)
+        if (!valid) return fail('Invalid or already used checkpoint token. Please redo the checkpoint.')
+      }
 
-      const { data: tokenRow } = await supabase
-        .from('lootlabs_tokens')
-        .select('status')
-        .eq('puid', puid)
-        .single()
+      // ── Verify LootLabs puid ────────────────────────────────────
+      if (provider === 'lootlabs') {
+        const puid = body.puid
+        if (!puid) return fail('Missing LootLabs token. Complete the checkpoint first.')
 
-      if (!tokenRow) return fail('Invalid LootLabs token.')
-      if (tokenRow.status === 'used') return fail('This LootLabs token has already been used.')
-      if (tokenRow.status === 'pending')
-        return new Response(JSON.stringify({ pending: true }), {
-          headers: { ...cors, 'Content-Type': 'application/json' }
-        })
+        const { data: tokenRow } = await supabase
+          .from('lootlabs_tokens')
+          .select('status')
+          .eq('puid', puid)
+          .maybeSingle()
 
-      await supabase
-        .from('lootlabs_tokens')
-        .update({ status: 'used' })
-        .eq('puid', puid)
+        if (!tokenRow) return fail('Invalid LootLabs token.')
+        if (tokenRow.status === 'used') return fail('This LootLabs token has already been used.')
+        if (tokenRow.status === 'pending')
+          return new Response(JSON.stringify({ pending: true }), {
+            headers: { ...cors, 'Content-Type': 'application/json' }
+          })
+
+        await supabase
+          .from('lootlabs_tokens')
+          .update({ status: 'used' })
+          .eq('puid', puid)
+      }
     }
 
     const keyHours = [24, 48].includes(Number(key_hours)) ? Number(key_hours) : 24

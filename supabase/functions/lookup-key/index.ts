@@ -24,13 +24,21 @@ function isRateLimited(ip: string): boolean {
 Deno.serve(async (req) => {
   const cors = {
     'Access-Control-Allow-Origin':  '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-admin-secret',
   }
 
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   const json = (d: object, s = 200) =>
     new Response(JSON.stringify(d), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } })
+
+  // ── Admin secret gate ────────────────────────────────────────────────────
+  // Set ADMIN_LOOKUP_SECRET in Supabase Edge Function secrets.
+  // Your admin panel must send: x-admin-secret: <value>
+  const adminSecret = Deno.env.get('ADMIN_LOOKUP_SECRET') ?? ''
+  const reqSecret   = req.headers.get('x-admin-secret') ?? ''
+  if (!adminSecret || reqSecret !== adminSecret)
+    return json({ error: 'Unauthorized' }, 401)
 
   const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
   if (isRateLimited(clientIp))
@@ -57,7 +65,7 @@ Deno.serve(async (req) => {
     const expired = new Date(data.expires_at) <= now
     const status  = data.is_disabled ? 'disabled' : expired ? 'expired' : 'active'
 
-    // Never expose the raw HWID value — only whether it's locked
+    // Never expose the raw HWID — only whether it's bound
     return json({
       found:         true,
       key_value:     data.key_value,

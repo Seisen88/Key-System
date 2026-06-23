@@ -7,19 +7,25 @@ const supabase = createClient(
 
 Deno.serve(async (req) => {
   const url       = new URL(req.url)
-  const click_id  = url.searchParams.get('click_id')
+  const click_id  = url.searchParams.get('click_id') ?? ''
+  const puid      = url.searchParams.get('puid') ?? click_id
   const ip        = url.searchParams.get('ip') ?? ''
   const unique_id = url.searchParams.get('unique_id') ?? ''
 
-  if (!click_id)
-    return new Response('missing click_id', { status: 400 })
+  console.log('postback params:', { click_id, puid, ip, unique_id, full_url: req.url })
+
+  if (!puid)
+    return new Response('missing puid', { status: 400 })
 
   // Get current token state
-  const { data: token } = await supabase
+  const { data: token, error: tokenErr } = await supabase
     .from('lootlabs_tokens')
     .select('tasks_required, tasks_completed, status')
-    .eq('puid', click_id)
-    .single()
+    .eq('puid', puid)
+    .maybeSingle()
+
+  if (tokenErr)
+    return new Response(`db error: ${tokenErr.message}`, { status: 500 })
 
   if (!token || token.status !== 'pending')
     return new Response('ok', { status: 200 })
@@ -36,7 +42,7 @@ Deno.serve(async (req) => {
       unique_id,
       ...(allDone ? { verified_at: new Date().toISOString() } : {}),
     })
-    .eq('puid', click_id)
+    .eq('puid', puid)
 
   return new Response('ok', { status: 200 })
 })
