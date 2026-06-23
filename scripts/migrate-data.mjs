@@ -1,13 +1,34 @@
 /**
  * Migrates all table data from old Supabase project to new one.
  * Usage: node scripts/migrate-data.mjs
+ *
+ * Requires env vars (or .env file):
+ *   OLD_SUPABASE_URL, OLD_SUPABASE_SERVICE_ROLE_KEY
+ *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 
-const OLD_URL = 'https://lpxhbjhkfimzjnuickji.supabase.co'
-const OLD_KEY = 'REMOVED_OLD_SERVICE_KEY'
+import { readFileSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 
-const NEW_URL = 'https://hmrypwvgyapyvpmdsstu.supabase.co'
-const NEW_KEY = 'REMOVED_NEW_SERVICE_KEY'
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const envVars = {}
+try {
+  readFileSync(resolve(__dirname, '../.env'), 'utf8').split('\n').forEach(line => {
+    const [k, ...v] = line.split('=')
+    if (k && k.trim() && !k.trim().startsWith('#')) envVars[k.trim()] = v.join('=').trim()
+  })
+} catch {}
+
+const OLD_URL = process.env.OLD_SUPABASE_URL        || envVars['OLD_SUPABASE_URL']
+const OLD_KEY = process.env.OLD_SUPABASE_SERVICE_ROLE_KEY || envVars['OLD_SUPABASE_SERVICE_ROLE_KEY']
+const NEW_URL = process.env.VITE_SUPABASE_URL        || envVars['VITE_SUPABASE_URL']
+const NEW_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || envVars['SUPABASE_SERVICE_ROLE_KEY']
+
+if (!OLD_URL || !OLD_KEY || !NEW_URL || !NEW_KEY) {
+  console.error('Missing required env vars. Add to .env:\n  OLD_SUPABASE_URL\n  OLD_SUPABASE_SERVICE_ROLE_KEY\n  VITE_SUPABASE_URL\n  SUPABASE_SERVICE_ROLE_KEY')
+  process.exit(1)
+}
 
 const PAGE = 1000
 

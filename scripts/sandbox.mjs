@@ -19,9 +19,9 @@ readFileSync(resolve(root, '.env'), 'utf8').split('\n').forEach(line => {
     envVars[k.trim()] = v.join('=').trim()
 })
 
-const PAT = envVars['SUPABASE_PAT']
-const URL = envVars['VITE_SUPABASE_URL']
-const REF = new URL(URL).hostname.split('.')[0]
+const PAT        = envVars['SUPABASE_PAT']
+const supabaseUrl = envVars['VITE_SUPABASE_URL']
+const REF        = new URL(supabaseUrl).hostname.split('.')[0]
 
 const mode = process.argv[2]
 if (!['on', 'off'].includes(mode)) {
