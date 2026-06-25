@@ -5,14 +5,22 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
+const POSTBACK_SECRET = Deno.env.get('POSTBACK_SECRET') ?? ''
+
 Deno.serve(async (req) => {
   const url       = new URL(req.url)
+  const secret    = url.searchParams.get('secret') ?? ''
   const click_id  = url.searchParams.get('click_id') ?? ''
   const puid      = url.searchParams.get('puid') ?? click_id
   const ip        = url.searchParams.get('ip') ?? ''
   const unique_id = url.searchParams.get('unique_id') ?? ''
 
   console.log('postback params:', { click_id, puid, ip, unique_id, full_url: req.url })
+
+  // Reject requests that don't carry the shared secret configured in LootLabs postback URL.
+  // This prevents anyone from faking task completions by hitting this endpoint directly.
+  if (!POSTBACK_SECRET || secret !== POSTBACK_SECRET)
+    return new Response('unauthorized', { status: 401 })
 
   if (!puid)
     return new Response('missing puid', { status: 400 })
